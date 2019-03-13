@@ -10,6 +10,7 @@ namespace max_eq3 {
     rfaddr_t rfaddr_from_string(const std::string &data);
     rfaddr_t rfaddr_from_string(const char *pData);
     std::string decode64(const std::string& s);
+    std::string encode64(const std::string& s);
 
 }
 

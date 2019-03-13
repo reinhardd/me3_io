@@ -87,5 +87,24 @@ std::string decode64(const std::string& s)
     return os.str();
 }
 
+const std::string base64_padding[] = {"", "==","="};
+std::string encode64(const std::string& s)
+{
+  namespace bai = boost::archive::iterators;
+
+  std::stringstream os;
+
+  // convert binary values to base64 characters
+  typedef bai::base64_from_binary
+  // retrieve 6 bit integers from a sequence of 8 bit bytes
+  <bai::transform_width<const char *, 6, 8> > base64_enc; // compose all the above operations in to a new iterator
+
+  std::copy(base64_enc(s.c_str()), base64_enc(s.c_str() + s.size()),
+            std::ostream_iterator<char>(os));
+
+  os << base64_padding[s.size() % 3];
+  return os.str();
+}
+
 
 }
