@@ -68,7 +68,9 @@ struct cube_io::Private
     std::map<rfaddr_t, m_device>    device_defs;
 
     device_data_store               devconfigs;
-    std::map<std::string, room_sp>  emit_rooms;
+    std::map<unsigned, room_sp>     emit_rooms;
+    std::map<unsigned, changeflag_set>
+                                    changeset;
 
 };
 }

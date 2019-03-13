@@ -43,21 +43,34 @@ enum struct changeflags : uint8_t {
     act_temp,
     mode,
     config,
-    contained_devs
+    contained_devs,
+    valve_pos,
+};
+
+enum struct opmode {
+    AUTO,
+    MANUAL,
+    VACATION,
+    BOOST,
 };
 
 using changeflag_set = std::set<changeflags>;
 
+using timestamped_valve_pos = std::pair<uint16_t, std::chrono::system_clock::time_point>;
+using timestamped_temp = std::pair<double, std::chrono::system_clock::time_point>;
+
 typedef struct room
 {
-    std::string     name;
-    double          set_temp{0.0};
-    double          actual_temp{0.0};
-    unsigned        mode{0};
-    std::chrono::system_clock::time_point
-                    act_changed_time;
-    unsigned        version;                // increments with every creation
-    changeflag_set  changed;
+    std::string         name;
+    timestamped_temp    set_temp;
+    timestamped_temp    actual_temp;
+    opmode              mode{opmode::AUTO};
+    timestamped_valve_pos         valve_pos;
+    unsigned            version;                // increments with every creation
+    changeflag_set      changed;
+    room()
+        : valve_pos(0,std::chrono::system_clock::now())
+    {}
 } room;
 
 using room_sp = std::shared_ptr<room>;
@@ -120,7 +133,11 @@ public:
     static void set_logger(logging_target *target);
 
 private:
-    //
+
+    // asio in process cmd handler
+    void do_send_temp(std::string room, double temp);
+
+    // asio internal processing
     void process_io();
     void handle_mcast_response(const boost::system::error_code& error, size_t bytes_recvd);
 
@@ -129,11 +146,12 @@ private:
     void timed_refresh(cube_sp, const boost::system::error_code &);
     void rxrh_done(cube_sp, const boost::system::error_code& e, std::size_t bytes_recvd);
 
-    void evaluate_data(cube_sp, std::string &&data);       
+    void evaluate_data(cube_sp, std::string &&data);
 
     struct rfaddr_related;
     rfaddr_related search(rfaddr_t addr);
     void deploydata(const l_submsg_data &smd);
+    void emit_changed_data();
 private:
     struct Private;
     std::unique_ptr<Private> _p;

@@ -1,7 +1,9 @@
 
+#include <algorithm>
 #include <chrono>
 
 #include <boost/bind.hpp>
+#include <boost/lexical_cast.hpp>
 
 #include "cubio_io_p.h"
 #include "cube_log_internal.h"
@@ -61,7 +63,14 @@ cube_io::cube_io(cube_event_target *iet)
 
 cube_io::~cube_io()
 {
+    _p->io.stop();
+    _p->io_thread.join();
+}
 
+void cube_io::change_set_temp(const std::string &room, double temp)
+{
+    LogV(__PRETTY_FUNCTION__ << std::endl);
+    _p->io.post(boost::bind(&cube_io::do_send_temp, this, room, temp));
 }
 
 void cube_io::process_io()
@@ -106,8 +115,8 @@ void cube_io::timed_refresh(cube_sp csp, const boost::system::error_code &ec)
                         {
                             if (e)
                                 LogE("write failed on refresh start")
-                            else
-                                LogV("refress started " << e << ": " << bytes_transferred)
+                            // else
+                            //    LogV("refresh started " << e << ": " << bytes_transferred)
                         }
         );
     }
@@ -115,6 +124,7 @@ void cube_io::timed_refresh(cube_sp csp, const boost::system::error_code &ec)
 
 void cube_io::rxrh_done(cube_sp csp, const boost::system::error_code& e, std::size_t bytes_recvd)
 {
+    LogV("rxrh_done\n")
     if (e)
     {
         LogE("error on receive for cube " << std::hex << csp->rfaddr)
@@ -145,6 +155,7 @@ void cube_io::start_rx_from_cube(cube_sp &csp)
                             ba::placeholders::error)
                 );
 
+    LogV("start_rx_from_cube\n")
     ba::async_read_until(csp->sock, csp->rxdata, "\r\n",
                         boost::bind(&cube_io::rxrh_done, this, csp,
                                     boost::asio::placeholders::error,
@@ -202,14 +213,29 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
         {
         case 'H':
             {
-                csp->serial = data.substr(2,10);
-                LogV("serial " << csp->serial)
-                uint32_t newrfaddr = rfaddr_from_string(data.substr(13,6));
+                LogV("ddhmsg: " << dump(data))
+                data.erase(0, 2);
+                std::vector<std::string> comma_separated;
+                boost::split(comma_separated, data, boost::is_any_of(","), boost::token_compress_off);
+                csp->serial = comma_separated[0]; // data.substr(0,10);
+                uint32_t newrfaddr = rfaddr_from_string(comma_separated[1]);
+                {
+                    std::istringstream iss(comma_separated[5]);
+                    // csp->duty_cycle = boost::lexical_cast<uint16_from_hex>(comma_separated[5]);
+                    iss >> std::hex >> csp->duty_cycle;
+                }
+
                 if (newrfaddr != csp->rfaddr)
                     LogE("rfaddr mismatch " << std::hex << newrfaddr << " != "
                               << csp->rfaddr << std::dec
                               << " from " << dump(data))
 
+                LogV(
+                      "serial " << csp->serial
+                      << " duty: " << csp->duty_cycle
+                      << " date: " << comma_separated[7]
+                      << " time: "  << comma_separated[8]
+                     )
             }
             break;
         case 'M':
@@ -226,14 +252,12 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
                          << " n:" << r.name)
 
                     room_conf &rc = _p->devconfigs.roomconf[r.id];
+                    rc.cube_rfaddr = csp->rfaddr;
                     rc.name = r.name;
                     rc.rfaddr = r.group_rfaddr;
                     rc.id = r.id;
 
                     room_data &rd = _p->devconfigs.rooms[r.id];
-                    rd.act = 0.0;
-                    rd.set = 0.0;
-
                 }
                 for (const m_device &d: devices)
                 {
@@ -264,6 +288,7 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
             break;
         case 'L':
             {
+                LogI("process L-Msg");
                 std::string decoded = decode64(data.substr(2, data.size() - 3));
 
                 while (decoded.size())
@@ -279,8 +304,8 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
                         LogE("l_resp failed");
 
                     decoded.erase(0, submsglen + 1);
-
                 }
+                emit_changed_data();
             }
             break;
         case 'C':
@@ -291,8 +316,6 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
                 {
                     std::string addr = data.substr(2, spos - 2);
                     std::string decoded = decode64(data.substr(spos + 1));
-
-                    // std::cout << "c-msg " << addr << ": " << dump(decoded) << std::endl;
 
                     dev_config devconf;
 
@@ -359,6 +382,8 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
                     LogE("invalid C-Message")
             }
             break;
+        default:
+            LogV("unhandle Message " << data[0] << std::endl)
         }
     }
 }
@@ -402,16 +427,16 @@ cube_io::rfaddr_related cube_io::search(rfaddr_t addr)
     return rfaddr_related();
 }
 
-room_sp gen_rsp(const room_conf &rc, const room_data &rd, changeflag_set &&cfs, unsigned version)
+room_sp gen_rsp(const room_conf &rc, const room_data &rd, const changeflag_set &cfs, unsigned last_version)
 {
     room_sp rsp = std::make_shared<room>();
     rsp->name = rc.name;
     rsp->changed = cfs;
     rsp->set_temp = rd.set;
     rsp->actual_temp = rd.act;
-    rsp->act_changed_time = rd.acttime;
-    rsp->mode = 18;
-    rsp->version = version;
+    // rsp->act_changed_time = rd.acttime;
+    rsp->version = last_version+1;
+    rsp->mode = rd.mode;
     return rsp;
 }
 
@@ -432,41 +457,198 @@ void cube_io::deploydata(const l_submsg_data &smd)
         {
         case devicetype::RadiatorThermostatPlus:
         case devicetype::RadiatorThermostat:
-            // if (!rf.wallthermostat)
             {
-                if ((smd.act_temp != 0.0) &&
-                        rd.change(rd.act, smd.act_temp, rcfs, changeflags::act_temp))
-                    rd.change(rd.acttime, std::chrono::system_clock::now(), rcfs, changeflags::act_temp);
+                if (smd.act_temp != 0.0)
+                    rd.change(rd.act, smd.act_temp, rcfs, changeflags::act_temp);
                 rd.change(rd.set, smd.set_temp, rcfs, changeflags::set_temp);
+                LogI("mode " << std::hex << int(rd.mode) << " -- " << (smd.flags & 0x3));
+                rd.change(rd.mode, static_cast<opmode>(smd.flags & 0x3), rcfs, changeflags::mode);
                 rd.change(rd.flags[smd.rfaddr], smd.flags, rcfs, changeflags::contained_devs);
+                rd.change(smd.rfaddr, smd.valve_pos, rcfs);
             }
             break;
         case devicetype::WallThermostat:
-            LogI("emit data")
-            if (rd.change(rd.act, smd.act_temp, rcfs, changeflags::act_temp))
-                rd.change(rd.acttime, std::chrono::system_clock::now(), rcfs, changeflags::act_temp);
-            rfa.p_room_data->act = smd.act_temp;
+            rd.change(rd.act, smd.act_temp, rcfs, changeflags::act_temp);
             rd.change(rd.set, smd.set_temp, rcfs, changeflags::set_temp);
+            rd.change(rd.mode, static_cast<opmode>(smd.flags & 0x3), rcfs, changeflags::mode);
             rd.change(rd.flags[smd.rfaddr], smd.flags, rcfs, changeflags::contained_devs);
             break;
         default: ;
         }
-        if (rcfs.size())
-        {   // we have changes
-            unsigned vers = 0;
-            if (_p->emit_rooms.find(rf.name) != _p->emit_rooms.end())
-                vers = _p->emit_rooms[rf.name]->version;
 
-            room_sp newsp = gen_rsp(rf, rd, std::move(rcfs), vers);
-            _p->emit_rooms[rf.name] = newsp;
-            if (_p->iet)
-                _p->iet->room_changed(newsp);
-        }
+        if (rcfs.size())    // we have changes
+            _p->changeset[rf.id].insert(rcfs.begin(), rcfs.end());
     }
     else
     {
         LogE("data incomplete")
     }
+}
+
+void cube_io::emit_changed_data()
+{
+    if (_p->iet)
+    {
+        for (const auto val: _p->changeset)
+        {
+            unsigned roomid = val.first;
+
+            device_data_store::roomdatamap::const_iterator
+                    rdmcit = _p->devconfigs.rooms.find(roomid);
+            device_data_store::roomconfmap::const_iterator
+                    rcfcit = _p->devconfigs.roomconf.find(roomid);
+            device_data_store::devicemap::const_iterator
+                    dmcit = _p->devconfigs.devconf.find(roomid);
+
+            if ((rdmcit != _p->devconfigs.rooms.end())
+                    && (rcfcit != _p->devconfigs.roomconf.end()))
+            {
+                // calc valve pos for room
+                timestamped_valve_pos valvepossum;
+                for (const auto x: rdmcit->second.valve_pos)
+                {
+                    timestamped_valve_pos cur = x.second;
+                    valvepossum.first += cur.first;
+                    if (valvepossum.second < cur.second)
+                        valvepossum.second = cur.second;
+                }
+                valvepossum.first /= rdmcit->second.valve_pos.size();
+
+                unsigned vers = 0;
+                if (_p->emit_rooms.find(roomid) != _p->emit_rooms.end())
+                    vers = _p->emit_rooms[roomid]->version;
+
+                room_sp newsp = gen_rsp(rcfcit->second, rdmcit->second, val.second, vers);
+
+                newsp->valve_pos = valvepossum;
+
+                _p->emit_rooms[roomid] = newsp;
+
+                _p->iet->room_changed(newsp);
+            }
+
+        }
+        _p->changeset.clear();
+    }
+}
+
+template<typename T>
+void append(std::ostream &os, T t, std::size_t sz)
+{
+    const char *pstart = reinterpret_cast<const char *>(&t);
+    pstart = pstart + sizeof(T);
+    int diff = sizeof(T) - sz;
+    if (diff >= 0)
+    {
+        pstart = pstart - diff;
+        for (unsigned u = 0; u < sz; ++u)
+        {
+            pstart--;
+            os.write(pstart, 1);
+        }
+    }
+    else
+        LogE("conversion problem within " << __PRETTY_FUNCTION__ << std::endl);
+
+}
+
+void cube_io::do_send_temp(std::string room, double temp)
+{
+    LogV(__FUNCTION__ << " for room " << room << " to " << temp << std::endl);
+    std::ostringstream xs;
+
+    const room_conf * roomconfig = nullptr;
+
+    for (const auto &v: _p->devconfigs.roomconf)
+    {
+        if (room == v.second.name)
+            roomconfig = &v.second;
+    }
+    if (roomconfig == nullptr)
+    {
+        LogE("no room found for name " << room << std::endl)
+        return;
+    }
+
+    if (_p->devconfigs.rooms.find(roomconfig->id) == _p->devconfigs.rooms.end())
+    {
+        LogE("no roomdata found for name " << room << std::endl);
+        return;
+    }
+    room_data &roomdata = _p->devconfigs.rooms[roomconfig->id];
+
+
+    uint8_t tmp = uint8_t(temp * 2);
+
+    if ((tmp & 0xC0) != 0)
+    {
+        LogE("temp to high : " << temp << std::endl)
+        return;
+    }
+
+    switch (roomdata.mode)
+    {
+    case opmode::AUTO:
+        break;
+    case opmode::MANUAL:
+        tmp |= 0x40;
+        break;
+    case opmode::VACATION:
+        tmp |= 0x80;
+        break;
+    case opmode::BOOST:
+        tmp |= 0xC0;
+        break;
+    }
+
+    rfaddr_t sendto = roomconfig->rfaddr;
+    if (sendto == 0)
+    {
+        if (roomconfig->wallthermostat)
+            sendto = roomconfig->wallthermostat;
+        if (roomconfig->thermostats.size())
+        {
+            sendto = *roomconfig->thermostats.begin();
+        }
+    }
+
+    append(xs, uint8_t(0), 1);              // Unknown
+    append(xs, uint8_t(4), 1);              // adress room
+    append(xs, uint8_t(0x40), 1);           // set Temperatur
+    append(xs, unsigned(0), 3);             // from rfaddr
+
+    // if roomconfig->rfaddr is zero all room are affected
+    // on room without rfaddr is set we should adress the radiator directly
+
+    append(xs, uint32_t(sendto), 3);            // to rfaddr
+    append(xs, uint8_t(roomconfig->id), 1);     // roomid
+    append(xs, tmp, 1);                         // temp
+
+    std::string encoded = encode64(xs.str());
+
+    LogV("unencoded" << dump(xs.str()) << std::endl)
+    LogV("encoded" << encoded << std::endl)
+    LogV("redecoded" << dump(decode64(encoded)) << std::endl)
+    std::string cmd2send = "s:" + encoded + "\r\n";
+    LogV("should send " << dump(cmd2send) << std::endl)
+
+    if (_p->cubes.find(roomconfig->cube_rfaddr) == _p->cubes.end())
+    {
+        LogE("unable to find associated cube\n")
+        return;
+    }
+
+    auto csp = _p->cubes[roomconfig->cube_rfaddr];
+    ba::async_write(csp->sock,
+                    ba::buffer(cmd2send),
+                    [&](const boost::system::error_code &e, std::size_t bytes_transferred)
+                    {
+                        if (e)
+                            LogE("set temp failed " << e << std::endl)
+                        else
+                            LogV("set temp done " << bytes_transferred << std::endl)
+                    }
+    );
 }
 
 } // ns max_eq3
@@ -475,38 +657,61 @@ namespace  {
 
 using namespace max_eq3;
 
-bool l_response(std::string &&decoded, max_eq3::l_submsg_data &adata)
+bool isvalid(uint16_t flags)
 {
-    // std::cout << "l_rsp " << dump(decoded) << std::endl;
+    return (flags & 0x1000) == 0x1000;
+}
+
+bool l_response(std::string &&decoded, max_eq3::l_submsg_data &adata)
+{    
     unsigned len = *(reinterpret_cast<uint8_t *>(&decoded[0]));
     adata.rfaddr = fromPtr<uint32_t>(&decoded[1], 3);
     uint8_t unknown = fromPtr<uint8_t>(&decoded[4]);
     adata.flags = fromPtr<uint16_t>(&decoded[5]);
+    LogI("flags:" << std::hex << adata.flags << std::dec
+                  << " mode:" << (adata.flags & 3)
+                  << " dst:" << ((adata.flags & 8) == 8)
+                  << " gw:" << ((adata.flags & 0x10) == 0x10)
+                  << " panel:" << ((adata.flags & 0x20) == 0x20)
+                  << " link:" << ((adata.flags & 0x40) == 0x40)
+                  << " bat:" << ((adata.flags & 0x80) == 0x80)
+                  << " init:" << ((adata.flags & 0x200) == 0x200)
+                  << " answer:" << ((adata.flags & 0x400) == 0x400)
+                  << " error:" << ((adata.flags & 0x800) == 0x800)
+                  << " valid:" << isvalid(adata.flags)
+                   )
     if (len > 6)
     {
-        if (len >= 11)
+        if (isvalid(adata.flags))
         {
-            adata.valve_pos = fromPtr<uint8_t>(&decoded[7+0]);
-            adata.set_temp = (fromPtr<uint8_t>(&decoded[7+1]) & 0x7f) / 2.0;
-            adata.minutes_since_midnight = fromPtr<uint8_t>(&decoded[7+4])*30;
-            uint16_t act_temp = 0;
-            if (len == 11) // thermostat of wallthermostat
+            if (len >= 11)
             {
-                adata.submsg_src = devicetype::RadiatorThermostat;
-                act_temp = (fromPtr<uint16_t>(&decoded[7+2]) & 0x1ff);
+                adata.valve_pos = fromPtr<uint8_t>(&decoded[7+0]);
+                adata.set_temp = (fromPtr<uint8_t>(&decoded[7+1]) & 0x7f) / 2.0;
+                adata.minutes_since_midnight = fromPtr<uint8_t>(&decoded[7+4])*30;
+                uint16_t act_temp = 0;
+                if (len == 11) // thermostat of wallthermostat
+                {
+                    adata.submsg_src = devicetype::RadiatorThermostat;
+                    act_temp = (fromPtr<uint16_t>(&decoded[7+2]) & 0x1ff);
+                }
+                else if (len == 12)
+                {
+                    adata.submsg_src = devicetype::WallThermostat;
+                    act_temp = (uint16_t(decoded[7+1] & 0x80) << 1) + fromPtr<uint8_t>(&decoded[7+5]);
+                    adata.dateuntil = fromPtr<uint16_t>(&decoded[7+2]);
+                }
+                else
+                {
+                    LogE("L-Msg: unprocessed data of length " << len)
+                }
+                adata.act_temp = act_temp / 10.0;
+                return true;
             }
-            else if (len == 12)
-            {
-                adata.submsg_src = devicetype::WallThermostat;
-                act_temp = (uint16_t(decoded[7+1] & 0x80) << 1) + fromPtr<uint8_t>(&decoded[7+5]);
-                adata.dateuntil = fromPtr<uint16_t>(&decoded[7+2]);
-            }
-            else
-            {
-                LogE("L-Msg: unprocessed data of length " << len)
-            }
-            adata.act_temp = act_temp / 10.0;
-            return true;
+        }
+        else
+        {
+            LogE("Invalid Data reported for device " << std::hex << adata.rfaddr << std::dec)
         }
     }
     else {
