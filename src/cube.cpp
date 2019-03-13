@@ -6,11 +6,6 @@ namespace max_eq3 {
 namespace ba = boost::asio;
 namespace bs = boost::system;
 
-cube_t::cube_t(boost::asio::io_service &ios)
-    : sock(ios)
-    , refreshtimer(ios)
-{}
-
 cube_t::cube_t(boost::asio::io_service &ios, std::string &&mcast_rsp, boost::asio::ip::udp::endpoint ep)
     : sock(ios)
     , refreshtimer(ios)
