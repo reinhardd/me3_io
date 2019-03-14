@@ -73,6 +73,12 @@ void cube_io::change_set_temp(const std::string &room, double temp)
     _p->io.post(boost::bind(&cube_io::do_send_temp, this, room, temp));
 }
 
+void cube_io::change_mode(const std::string &room, opmode mode)
+{
+    LogV(__PRETTY_FUNCTION__ << std::endl);
+    _p->io.post(boost::bind(&cube_io::do_send_mode, this, room, mode));
+}
+
 void cube_io::process_io()
 {
     bs::error_code error;
@@ -552,10 +558,114 @@ void append(std::ostream &os, T t, std::size_t sz)
 
 }
 
+const room_conf *roomconf_by_name(const device_data_store &dds, const std::string &n)
+{
+    for (const auto &v: dds.roomconf)
+    {
+        if (n == v.second.name)
+            return &v.second;
+    }
+    return nullptr;
+}
+
+const room_data *roomdata_by_id(const device_data_store &dds, unsigned id)
+{
+    device_data_store::roomdatamap::const_iterator cit = dds.rooms.find(id);
+    if (cit == dds.rooms.end())
+        return nullptr;
+    return &cit->second;
+}
+
+
+void cube_io::do_send_mode(std::string room, opmode mode)
+{
+    LogV(__FUNCTION__ << " for room " << room << " to " << int(mode) << std::endl);
+
+    const room_conf * roomconfig = roomconf_by_name(_p->devconfigs, room);
+    if (!roomconfig)
+    {
+        LogE("no room found for name " << room << std::endl)
+        return;
+    }
+    const room_data * roomdata = roomdata_by_id(_p->devconfigs, roomconfig->id);
+    if (!roomdata)
+    {
+        LogE("no room found for id " << roomconfig->id << std::endl)
+        return;
+    }
+
+    uint8_t tmp = uint8_t(roomdata->set.first * 2);
+
+    if ((tmp & 0xC0) != 0)
+    {
+        LogE("temp to high : " << tmp << std::endl)
+        return;
+    }
+
+    switch (mode)
+    {
+    case opmode::AUTO:
+        break;
+    case opmode::MANUAL:
+        tmp |= 0x40;
+        break;
+    case opmode::VACATION:
+        tmp |= 0x80;
+        break;
+    case opmode::BOOST:
+        tmp |= 0xC0;
+        break;
+    }
+
+    emit_S_temp_mode(roomconfig->cube_rfaddr, roomconfig->rfaddr, roomconfig->id, tmp);
+}
+
+void cube_io::emit_S_temp_mode(rfaddr_t cubeto, rfaddr_t sendto, uint8_t roomid, uint8_t tmp_mode)
+{
+    std::ostringstream xs;
+
+    append(xs, uint8_t(0), 1);              // Unknown
+    append(xs, uint8_t(4), 1);              // adress room
+    append(xs, uint8_t(0x40), 1);           // set Temperatur
+    append(xs, unsigned(0), 3);             // from rfaddr
+
+    // if roomconfig->rfaddr is zero all room are affected
+    // on room without rfaddr is set we should adress the radiator directly
+
+    append(xs, uint32_t(sendto), 3);            // to rfaddr
+    append(xs, uint8_t(roomid), 1);     // roomid
+    append(xs, tmp_mode, 1);                         // temp
+
+    std::string encoded = encode64(xs.str());
+
+    LogV("unencoded" << dump(xs.str()) << std::endl)
+    LogV("encoded" << encoded << std::endl)
+    LogV("redecoded" << dump(decode64(encoded)) << std::endl)
+    std::string cmd2send = "s:" + encoded + "\r\n";
+    LogV("should send " << dump(cmd2send) << std::endl)
+
+    if (_p->cubes.find(cubeto) == _p->cubes.end())
+    {
+        LogE("unable to find associated cube\n")
+        return;
+    }
+
+    auto csp = _p->cubes[cubeto];
+    ba::async_write(csp->sock,
+                    ba::buffer(cmd2send),
+                    [&](const boost::system::error_code &e, std::size_t bytes_transferred)
+                    {
+                        if (e)
+                            LogE("set temp failed " << e << std::endl)
+                        else
+                            LogV("set temp done " << bytes_transferred << std::endl)
+                    }
+    );
+}
+
 void cube_io::do_send_temp(std::string room, double temp)
 {
     LogV(__FUNCTION__ << " for room " << room << " to " << temp << std::endl);
-    std::ostringstream xs;
 
     const room_conf * roomconfig = nullptr;
 
@@ -611,6 +721,8 @@ void cube_io::do_send_temp(std::string room, double temp)
             sendto = *roomconfig->thermostats.begin();
         }
     }
+
+    std::ostringstream xs;
 
     append(xs, uint8_t(0), 1);              // Unknown
     append(xs, uint8_t(4), 1);              // adress room

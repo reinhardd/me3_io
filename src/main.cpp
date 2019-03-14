@@ -211,7 +211,6 @@ int main(int argc, char *argv[])
         else if (cmdstring.substr(0,4) == "temp")
         {
             std::string scmd = cmdstring.substr(5);
-            // temp "room" "newtemp".double
             std::vector<std::string> spv;
             boost::split(spv, scmd, boost::is_any_of(" "), boost::token_compress_on);
             if (spv.size() != 2)
@@ -235,6 +234,40 @@ int main(int argc, char *argv[])
                         cub.change_set_temp(spv[0], temp);
                 }
             }
+        }
+        else if (cmdstring.substr(0,4) == "mode")
+        {
+            std::string scmd = cmdstring.substr(5);
+            std::vector<std::string> spv;
+            boost::split(spv, scmd, boost::is_any_of(" "), boost::token_compress_on);
+            if (spv.size() != 2)
+            {
+                std::cerr << "invalid syntax <" << cmdstring << "> usage: temp kitchen 19.5 \n";
+            }
+            else
+            {
+                if (!cic.has_room(spv[0]))
+                {
+                    std::cerr << "no room named " << spv[0] << std::endl;
+                }
+                else
+                {
+                    max_eq3::opmode mode;
+                    if (spv[1] == "auto")
+                        mode = max_eq3::opmode::AUTO;
+                    else if (spv[1] == "manual")
+                        mode = max_eq3::opmode::MANUAL;
+                    else if (spv[1] == "boost")
+                        mode = max_eq3::opmode::BOOST;
+                    // for VACATION we need more parameters
+                    else
+                    {
+                        std::cerr << "invalid parameter " << spv[1] << std::endl;
+                    }
+                    cub.change_mode(spv[0], mode);
+                }
+            }
+
         }
         else {
             std::cout << "unknown command " << cmdstring << std::endl;

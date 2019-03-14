@@ -128,6 +128,7 @@ public:
 
     // room api
     void change_set_temp(const std::string &room, double temp);
+    void change_mode(const std::string &room, opmode mode);
     void get_details(const std::string &room, room_details &rd);
 
     static void set_logger(logging_target *target);
@@ -136,6 +137,9 @@ private:
 
     // asio in process cmd handler
     void do_send_temp(std::string room, double temp);
+    void do_send_mode(std::string room, opmode mode);
+
+    void emit_S_temp_mode(rfaddr_t cubeto, rfaddr_t sendto, uint8_t roomid, uint8_t tmp_mode);
 
     // asio internal processing
     void process_io();
