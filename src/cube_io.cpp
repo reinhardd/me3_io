@@ -150,17 +150,22 @@ void cube_io::rxrh_done(cube_sp csp, const boost::system::error_code& e, std::si
     start_rx_from_cube(csp);
 }
 
-void cube_io::start_rx_from_cube(cube_sp &csp)
+void cube_io::restart_wait_timer(cube_sp &csp)
 {
     csp->refreshtimer.cancel();
-    csp->refreshtimer.expires_after(std::chrono::seconds(30));
+    csp->refreshtimer.expires_after(std::chrono::seconds(_p->short_refresh ? 5 : 30));
     csp->refreshtimer.async_wait(
                 boost::bind(&cube_io::timed_refresh,
                             this,
                             csp,
                             ba::placeholders::error)
                 );
+    _p->short_refresh = false;
+}
 
+void cube_io::start_rx_from_cube(cube_sp &csp)
+{
+    restart_wait_timer(csp);
     LogV("start_rx_from_cube\n")
     ba::async_read_until(csp->sock, csp->rxdata, "\r\n",
                         boost::bind(&cube_io::rxrh_done, this, csp,
@@ -210,13 +215,34 @@ void cube_io::handle_mcast_response(const bs::error_code &error, size_t bytes_re
                                               boost::asio::placeholders::bytes_transferred));
 }
 
-
 void cube_io::evaluate_data(cube_sp csp, std::string &&data)
 {
     if (data.size())
     {
         switch (data[0])
         {
+        case 'S':
+            {
+               LogV("S-msg: " << data)
+               std::vector<std::string> inp;
+               data.erase(0,2);
+               boost::split(inp, data, boost::is_any_of(","), boost::token_compress_on);
+               if (inp.size() != 3)
+                   LogE("wrong S message recived ")
+               else
+               {
+                   try {
+                       unsigned dutycycle = boost::lexical_cast<unsigned>(inp[0]);
+                       bool rspvalid = boost::lexical_cast<unsigned>(inp[1]);
+                       unsigned freeslots = boost::lexical_cast<unsigned>(inp[2]);
+                       LogV("dutycycle: " << dutycycle << "% cmd: " << (rspvalid ? "failed" : "ok") << " freeslots: " << freeslots)
+                   } catch (boost::bad_lexical_cast &) {
+
+                   }
+               }
+               _p->short_refresh = true;
+            }
+            break;
         case 'H':
             {
                 LogV("ddhmsg: " << dump(data))

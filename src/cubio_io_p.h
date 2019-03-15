@@ -72,6 +72,8 @@ struct cube_io::Private
     std::map<unsigned, changeflag_set>
                                     changeset;
 
+    bool                            short_refresh{false};
+
 };
 }
 #endif // CUBIO_IO_P_H

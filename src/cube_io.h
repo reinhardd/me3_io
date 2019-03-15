@@ -147,6 +147,7 @@ private:
 
     // cube related communication handlers
     void start_rx_from_cube(cube_sp &csp);
+    void restart_wait_timer(cube_sp &csp);
     void timed_refresh(cube_sp, const boost::system::error_code &);
     void rxrh_done(cube_sp, const boost::system::error_code& e, std::size_t bytes_recvd);
 
