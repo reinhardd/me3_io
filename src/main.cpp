@@ -268,8 +268,9 @@ int main(int argc, char *argv[])
                 }
             }
 
-        }
-        else {
+        }        
+        else
+        {
             std::cout << "unknown command " << cmdstring << std::endl;
         }
     }
