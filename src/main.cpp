@@ -7,9 +7,12 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/program_options.hpp>
 
 #include "cube_io.h"
 #include "cube_log.h"
+
+namespace bpo = boost::program_options;
 
 class cube_logger : public max_eq3::logging_target
 {
@@ -189,10 +192,30 @@ public:
 
 int main(int argc, char *argv[])
 {
+    bpo::options_description desc("Options");
+    std::string cubeserial;
+    desc.add_options()
+            ("help,h",                            "show help")
+            ("serial,s", bpo::value<std::string>(&cubeserial), "identifies cube by serial no")
+        ;
+
+    bpo::variables_map vm;
+    bpo::store(bpo::parse_command_line(argc, argv, desc), vm);
+    bpo::notify(vm);
+
+    if (vm.count("help")) {
+        std::cout << argv[0]
+                << " controls exactly ONE MAX-EQ3 cube\n"
+                << " and makes the gathered data available via mqtt\n\n"
+                << desc << "\n";
+        return 1;
+    }
+
+
     cube_logger cl;
     max_eq3::cube_io::set_logger(&cl);
     cube_io_callback cic(cl);
-    max_eq3::cube_io cub(&cic);
+    max_eq3::cube_io cub(&cic, cubeserial);
 
     while(true)
     {
@@ -204,6 +227,14 @@ int main(int argc, char *argv[])
 
         if (cmdstring == "quit")
             break;
+        if (cmdstring == "help")
+        {
+            std::cout << "commands:\n"
+                      << "    temp <room> <temperature>      # example: temp livingroom 17.5\n"
+                      << "    mode <room> <mode>             # tmode :== manual | auto | boost\n"
+                      << "    status                         # show current status\n"
+                      << "    quit                           # exit program\n";
+        }
         else if (cmdstring == "status")
         {
             cic.loginfo(std::cout);
@@ -263,11 +294,11 @@ int main(int argc, char *argv[])
                     else
                     {
                         std::cerr << "invalid parameter " << spv[1] << std::endl;
+                        continue;
                     }
                     cub.change_mode(spv[0], mode);
                 }
             }
-
         }        
         else
         {
