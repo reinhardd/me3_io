@@ -14,7 +14,7 @@ typedef struct cube_t
     uint16_t                        duty_cycle{0};
     uint16_t                        freememslots{0};
 
-    uint16_t                        flags;
+    // uint16_t                        flags;
 
 
     // asio data
