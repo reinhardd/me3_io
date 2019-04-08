@@ -15,6 +15,11 @@
 
 namespace  {
 
+std::string cdt = "eQ3Max*\0*********I";
+std::string cdts("eQ3Max*\0", 8);
+std::string cdte = "I";
+std::string cdtu = "**********";
+
 uint8_t cube_detect_request[19] = {
     0x65, 0x51, 0x33, 0x4d,
     0x61, 0x78, 0x2a, 0x00,
@@ -28,6 +33,8 @@ bool l_response(std::string &&decoded, max_eq3::l_submsg_data &adata);
 bool m_response(std::string &&rawdata,
                 std::list<max_eq3::m_room> &roomlist,
                 std::list<max_eq3::m_device> &devicelist);
+
+max_eq3::week_schedule get_schedule(const uint8_t *pD);
 }
 
 namespace max_eq3 {
@@ -54,9 +61,10 @@ void cube_io::set_logger(logging_target *target)
     set_log_target(target);
 }
 
-cube_io::cube_io(cube_event_target *iet)
+cube_io::cube_io(cube_event_target *iet, const std::string &serialno)
     : _p(new Private)
 {
+    _p->serial = serialno;
     _p->iet = iet;
     _p->io_thread = std::thread(std::bind(&cube_io::process_io, this));
 }
@@ -89,11 +97,25 @@ void cube_io::process_io()
     _p->socket.bind(listen_endpoint);
     if (!error)
     {
+
         ba::ip::udp::endpoint senderEndpoint(ba::ip::address_v4::from_string(MULTICAST), MAX_UDP_PORT);
 
         LogV("send now")
+
+        std::string mcreq;
+        if (_p->serial.size())
+        {
+            mcreq = cdts + _p->serial + cdte;
+        }
+        else
+        {
+            mcreq = cdts + cdtu + cdte;
+        }
+        LogV("size of serial req " << mcreq.size() << " [" << dump(mcreq) << "]\n")
+
         _p->socket.async_send_to(
-            ba::buffer(cube_detect_request, sizeof(cube_detect_request)),
+            // ba::buffer(cube_detect_request, sizeof(cube_detect_request)),
+            ba::buffer(mcreq, mcreq.size()),
             senderEndpoint,
             [](const bs::error_code &ec, size_t)
                 { LogV("mcast send done") }
@@ -245,7 +267,7 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
             break;
         case 'H':
             {
-                LogV("ddhmsg: " << dump(data))
+                LogV("H-msg: " << dump(data))
                 data.erase(0, 2);
                 std::vector<std::string> comma_separated;
                 boost::split(comma_separated, data, boost::is_any_of(","), boost::token_compress_off);
@@ -383,13 +405,17 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
                                 rthc.max = fromPtr<uint8_t>(pData++) / 2.0;;
                                 rthc.min = fromPtr<uint8_t>(pData++) / 2.0;
                                 rthc.tofs = fromPtr<uint8_t>(pData++) / 2.0 + 3.5;
+                                pData += 6;
+                                // points to week programs
+                                rthc.schedule = get_schedule(reinterpret_cast<const uint8_t*>(pData));
                                 LogV("radiatorThermostat "
                                           << " comfort " << rthc.comfort
                                           << " eco " << rthc.eco
                                           << " min " << rthc.min
                                           << " max " << rthc.max
-                                          << " tofs " << rthc.tofs)
+                                          << " tofs " << rthc.tofs)                                
                                 devconf.specific = rthc;
+
                             }
                             break;
                         case devicetype::WallThermostat:
@@ -399,6 +425,8 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
                                 wthc.eco = fromPtr<uint8_t>(pData++) / 2.0;
                                 wthc.max = fromPtr<uint8_t>(pData++) / 2.0;
                                 wthc.min = fromPtr<uint8_t>(pData++) / 2.0;
+                                pData += (0x1d - 0x15);
+                                wthc.schedule = get_schedule(reinterpret_cast<const uint8_t*>(pData));
                                 LogV("wallThermostat "
                                           << " comfort " << wthc.comfort
                                           << " eco " << wthc.eco
@@ -856,6 +884,28 @@ bool l_response(std::string &&decoded, max_eq3::l_submsg_data &adata)
         LogE("L-Msg: unprocessed data of length " << len)
     }
     return false;
+}
+
+week_schedule get_schedule(const uint8_t *pD)
+{
+    week_schedule ws;
+    for (unsigned u = 0; u < DAYS_A_WEEK; ++u)
+    {
+        for (unsigned x = 0; x < SCHED_POINTS; ++x)
+        {
+            const uint8_t &lsb = pD[0];
+            const uint8_t &msb = pD[1];
+
+            ws[u][x].temp = (lsb >> 1) / 2.0;
+            unsigned until = (lsb & 1 ? 0x100 : 0);
+            until += msb;
+            ws[u][x].minutes_since_midnight = until * 5;
+            LogV("sd " << u << ':' << x << " " << ws[u][x].temp << "°C " << ws[u][x].minutes_since_midnight)
+            pD += 2;
+
+        }
+    }
+    return ws;
 }
 
 bool m_response(std::string &&rawdata,

@@ -9,6 +9,7 @@
 #include <memory>
 #include <variant>
 #include <set>
+#include <array>
 
 #include <boost/asio.hpp>
 #include <boost/shared_ptr.hpp>
@@ -27,6 +28,8 @@ namespace max_eq3 {
 struct l_submsg_data;
 
 class logging_target;
+
+// definitions
 
 enum struct devicetype : uint8_t {
     Cube = 0,
@@ -54,6 +57,28 @@ enum struct opmode {
     BOOST,
 };
 
+struct schedule_point
+{
+    double temp;
+    unsigned minutes_since_midnight;
+};
+
+enum {
+    Saturday = 0,
+    Sunday,
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday
+};
+
+#define DAYS_A_WEEK 7
+#define SCHED_POINTS 13
+
+using day_schedule = std::array<schedule_point, SCHED_POINTS>;
+using week_schedule = std::array<day_schedule, DAYS_A_WEEK>;
+
 using changeflag_set = std::set<changeflags>;
 
 using timestamped_valve_pos = std::pair<uint16_t, std::chrono::system_clock::time_point>;
@@ -65,7 +90,11 @@ typedef struct room
     timestamped_temp    set_temp;
     timestamped_temp    actual_temp;
     opmode              mode{opmode::AUTO};
-    timestamped_valve_pos         valve_pos;
+    timestamped_valve_pos
+                        valve_pos;
+
+    week_schedule       schedule;
+
     unsigned            version;                // increments with every creation
     changeflag_set      changed;
     room()
@@ -123,7 +152,7 @@ using cube_sp = std::shared_ptr<cube_t>;
 class cube_io
 {
 public:
-    cube_io(cube_event_target *iet);
+    cube_io(cube_event_target *iet, const std::string &serialno);
     ~cube_io();
 
     // room api
