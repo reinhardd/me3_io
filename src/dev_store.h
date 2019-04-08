@@ -19,11 +19,13 @@ typedef struct cube_config
 typedef struct radiatorThermostat_config
 {
     double comfort, eco, max, min, tofs;
+    week_schedule   schedule;
 } radiatorThermostat_config;
 
 typedef struct wallThermostat_config
 {
     double comfort, eco, max, min;
+    week_schedule   schedule;
 } wallThermostat_config;
 
 using dev_config_v = std::variant<cube_config, radiatorThermostat_config, wallThermostat_config>;
