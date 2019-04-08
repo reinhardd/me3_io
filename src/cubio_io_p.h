@@ -51,6 +51,7 @@ typedef struct {
 
 struct cube_io::Private
 {
+    std::string                     serial;
     std::thread                     comthread;
     boost::asio::io_service         io;
     boost::asio::ip::udp::socket    socket{io};
