@@ -258,17 +258,35 @@ int main(int argc, char *argv[])
     cube_io_callback cic(cl, hmc);
     max_eq3::cube_io cub(&cic, cubeserial);
     hmc.set_setter([&cub](std::string_view room, std::string_view cmd) {
-        std::cout << "inside setter " << room << ':' << cmd << std::endl;
+
+        std::string sroom(room.begin(), room.end());
         if (cmd.substr(0,5) == "temp:")
         {
             std::string parms(cmd.begin() + 5, cmd.end());
-            std::cout << "parms " << parms << std::endl;
             std::istringstream is(parms);
             double temp;
             is >> temp;
             std::cout << "set temp for " << room << " to " << temp << std::endl;
-            cub.change_set_temp(std::string(room.begin(), room.end()), temp);
+            cub.change_set_temp(sroom, temp);
         }
+        else if (cmd.substr(0,5) == "mode:")
+        {
+            std::string_view x = cmd.substr(5);
+            boost::optional<max_eq3::opmode> m;
+            if (x == "auto")
+                m = max_eq3::opmode::AUTO;
+            else if (x == "manual")
+                m = max_eq3::opmode::MANUAL;
+            else if (x == "boost")
+                m = max_eq3::opmode::BOOST;
+
+            if (m)
+            {
+                std::cout << "change mode for " << room << " to " << x << std::endl;
+                cub.change_mode(sroom, *m);
+            }
+        }
+
 
     });
 
