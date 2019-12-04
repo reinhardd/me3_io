@@ -12,7 +12,6 @@ namespace ba = boost::asio;
 namespace bs = boost::system;
 
 #include "cube_io.h"
-#include "cube.h"
 #include "dev_store.h"
 
 namespace max_eq3 {
@@ -44,10 +43,9 @@ struct m_device
     uint8_t     room_id;
 };
 
-typedef struct {
-
-} device;
-
+enum cnf_tags : uint16_t {
+    rd_timeserver   = 1,
+};
 
 struct cube_io::Private
 {
@@ -69,12 +67,16 @@ struct cube_io::Private
     std::map<rfaddr_t, m_device>    device_defs;
 
     device_data_store               devconfigs;
+
+    device_sp                       deviceinfo;
     std::map<unsigned, room_sp>     emit_rooms;
     std::map<unsigned, changeflag_set>
                                     changeset;
 
     bool                            short_refresh{false};
 
+    unsigned                        confread { 0 };
+    std::set<cnf_tags>              rcvd_configs { rd_timeserver };
 };
 }
 #endif // CUBIO_IO_P_H

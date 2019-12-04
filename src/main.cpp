@@ -5,6 +5,8 @@
 #include <fstream>
 #include <thread>
 
+#include "cube_mqtt_client.h"   // stay before the boost includes
+
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/program_options.hpp>
@@ -80,29 +82,50 @@ std::ostream &operator << (std::ostream &s, const max_eq3::timestamped_valve_pos
     return s;
 }
 
-class cube_io_callback : public max_eq3::cube_event_target
+class cube_io_callback
+        : public max_eq3::cube_event_target
 {
 public:
     using roommap = std::map<std::string, max_eq3::room_sp>;
 private:
+    max_eq3::device_sp device;
     roommap rooms;
 
     cube_logger &_log;
+    max_eq3::homie_mqtt_client &_max_mqtt_client;
     mutable std::mutex   _mtx;
+
 public:
-    cube_io_callback(cube_logger &l)
+    cube_io_callback(cube_logger &l, max_eq3::homie_mqtt_client &mqtt_client)
         : _log(l)
+        , _max_mqtt_client(mqtt_client)
     {}
 
+    void complete()
+    {
+        _max_mqtt_client.complete();
+    }
+    virtual void device_info(max_eq3::device_sp dsp) override
+    {
+        device = dsp;
+        _max_mqtt_client.expose_cube(dsp);
+    }
     virtual void room_changed(max_eq3::room_sp rsp) override
     {
         {
             std::unique_lock<std::mutex> l(_mtx);
-            rooms[rsp->name] = rsp;
+            rooms[rsp->name] = rsp;            
         }
+        std::cout << "rchanged " << rsp->name
+                  << " m:" << int(rsp->mode)
+                  << " s:" << rsp->set_temp
+                  << " a:" << rsp->actual_temp
+                  << " v:" << rsp->valve_pos
+                  << std::endl;
 
         if (!rsp->changed.empty())
         {
+            _max_mqtt_client.expose_room(rsp);
             std::ostringstream xs;
             xs << "room " << rsp->name << " changed[" << std::flush;
             for (auto cf: rsp->changed)
@@ -194,9 +217,13 @@ int main(int argc, char *argv[])
 {
     bpo::options_description desc("Options");
     std::string cubeserial;
+    std::string mqtthost = "localhost";
+    std::string mqttport = "1883";
     desc.add_options()
             ("help,h",                            "show help")
             ("serial,s", bpo::value<std::string>(&cubeserial), "identifies cube by serial no")
+            ("mqtthost,m", bpo::value<std::string>(&mqtthost), "mqtt server host")
+            ("mqttport,p", bpo::value<std::string>(&mqttport), "mqtt server port")
         ;
 
     bpo::variables_map vm;
@@ -206,16 +233,44 @@ int main(int argc, char *argv[])
     if (vm.count("help")) {
         std::cout << argv[0]
                 << " controls exactly ONE MAX-EQ3 cube\n"
-                << " and makes the gathered data available via mqtt\n\n"
+                << " and exposes the sampled data via mqtt\n\n"
                 << desc << "\n";
         return 1;
     }
 
+    std::cout << "using mqtt host at " << mqtthost << ":" << mqttport << std::endl;
+
+
+    // max_eq3::cube_mqtt_client connector(
+    //            max_eq3::cube_mqtt_client::temp_set_fn_t(),
+    //            max_eq3::cube_mqtt_client::mode_set_fn_t());
+
+
+    max_eq3::homie_mqtt_client hmc(mqtthost, mqttport);
+    std::thread t([&hmc](){
+            std::cout << "hmc thread function\n";            
+            hmc.run();
+            std::cout << "hmc thread done\n";
+        });
 
     cube_logger cl;
     max_eq3::cube_io::set_logger(&cl);
-    cube_io_callback cic(cl);
+    cube_io_callback cic(cl, hmc);
     max_eq3::cube_io cub(&cic, cubeserial);
+    hmc.set_setter([&cub](std::string_view room, std::string_view cmd) {
+        std::cout << "inside setter " << room << ':' << cmd << std::endl;
+        if (cmd.substr(0,5) == "temp:")
+        {
+            std::string parms(cmd.begin() + 5, cmd.end());
+            std::cout << "parms " << parms << std::endl;
+            std::istringstream is(parms);
+            double temp;
+            is >> temp;
+            std::cout << "set temp for " << room << " to " << temp << std::endl;
+            cub.change_set_temp(std::string(room.begin(), room.end()), temp);
+        }
+
+    });
 
     while(true)
     {
@@ -244,6 +299,9 @@ int main(int argc, char *argv[])
             std::string scmd = cmdstring.substr(5);
             std::vector<std::string> spv;
             boost::split(spv, scmd, boost::is_any_of(" "), boost::token_compress_on);
+
+            std::string roomname;
+
             if (spv.size() != 2)
             {
                 std::cerr << "invalid syntax <" << cmdstring << "> usage: temp kitchen 19.5 \n";
@@ -265,6 +323,10 @@ int main(int argc, char *argv[])
                         cub.change_set_temp(spv[0], temp);
                 }
             }
+        }
+        else if (cmdstring == "complete")
+        {
+            cic.complete();
         }
         else if (cmdstring.substr(0,4) == "mode")
         {
@@ -305,5 +367,10 @@ int main(int argc, char *argv[])
             std::cout << "unknown command " << cmdstring << std::endl;
         }
     }
+    std::cout << "left cmd loop\n";
+    hmc.stop();
+    std::cout << "stopped\n";
+
+    t.join();
     return 0;
 }

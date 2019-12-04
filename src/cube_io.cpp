@@ -114,7 +114,6 @@ void cube_io::process_io()
         LogV("size of serial req " << mcreq.size() << " [" << dump(mcreq) << "]\n")
 
         _p->socket.async_send_to(
-            // ba::buffer(cube_detect_request, sizeof(cube_detect_request)),
             ba::buffer(mcreq, mcreq.size()),
             senderEndpoint,
             [](const bs::error_code &ec, size_t)
@@ -187,6 +186,7 @@ void cube_io::restart_wait_timer(cube_sp &csp)
 
 void cube_io::start_rx_from_cube(cube_sp &csp)
 {
+    // update_config(csp);
     restart_wait_timer(csp);
     LogV("start_rx_from_cube\n")
     ba::async_read_until(csp->sock, csp->rxdata, "\r\n",
@@ -195,6 +195,40 @@ void cube_io::start_rx_from_cube(cube_sp &csp)
                                     boost::asio::placeholders::bytes_transferred
                                     )
                          );
+
+}
+
+void cube_io::update_config(cube_sp csp)
+{
+    std::string txcmd;
+    if (_p->rcvd_configs.size())
+    {
+        const auto t = _p->rcvd_configs.begin();
+        switch (*t)
+        {
+            case cnf_tags::rd_timeserver:
+                txcmd = "f:\r\n";
+                break;
+        }
+    }
+
+    LogV("query config " << txcmd)
+    if (txcmd.size())
+    {
+        ba::async_write(csp->sock,
+            ba::buffer(txcmd, txcmd.size()),
+            [](const boost::system::error_code &e, std::size_t bytes_transferred)
+            {
+                if (e)
+                    LogE("write failed on update config")
+                else
+                {
+                    LogV("cnf query write done " << e << ": " << bytes_transferred)
+                }
+            }
+        );
+
+    }
 
 }
 
@@ -225,7 +259,6 @@ void cube_io::handle_mcast_response(const bs::error_code &error, size_t bytes_re
                 }
                 start_rx_from_cube(cube);
 
-                // start_rx_from_cube(cc, true);
             }
 
         }
@@ -317,7 +350,7 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
                 {
                     _p->device_defs[d.rfaddr] = d;
                     LogV("dev: " << std::hex << d.rfaddr << std::dec
-                         << " n:" << d.name << " t:" << uint8_t(d.type) << " sn:" << d.serial
+                         << " n:" << d.name << " t:" << uint16_t(d.type) << " sn:" << d.serial
                          << " rid:" << uint16_t(d.room_id))
 
                     if (_p->devconfigs.roomconf.find(d.room_id) == _p->devconfigs.roomconf.end())
@@ -362,6 +395,12 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
                 emit_changed_data();
             }
             break;
+        case 'F':
+            {
+                LogI("process F-Msg " << data.substr(2));
+                _p->rcvd_configs.erase(cnf_tags::rd_timeserver);
+            }
+            break;
         case 'C':
             {
                 std::string::size_type spos = data.find(',');
@@ -385,7 +424,7 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
                     devconf.serial = std::string(pData, pData + 10);
                     pData += 10;
 
-                    LogV("c-msg len " << uint16_t(len)
+                    LogV("C-msg len " << uint16_t(len)
                               << " rfaddr " << std::hex << devconf.rfaddr << std::dec
                               << " dev " << uint16_t(devconf.devtype)
                               << " room " << uint16_t(devconf.room_id)
@@ -549,6 +588,23 @@ void cube_io::emit_changed_data()
 {
     if (_p->iet)
     {
+        if (!_p->deviceinfo)
+        {
+            if (_p->cubes.size())
+            {
+                device_sp newdev = std::make_shared<device>();
+                cube_map_t::const_iterator ccit = _p->cubes.begin();
+                if (ccit != _p->cubes.end())
+                {
+                    newdev->name = ccit->second->serial;
+                    newdev->addr = ccit->second->addr.to_string();
+                    LogI("newdev " << newdev->name << " a: " << newdev->addr)
+                    _p->deviceinfo = newdev;
+                    _p->iet->device_info(newdev);
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                }
+            }
+        }
         for (const auto val: _p->changeset)
         {
             unsigned roomid = val.first;

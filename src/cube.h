@@ -2,9 +2,16 @@
 #define CUBE_H
 #pragma once
 
-#include "cube_io.h"
+#include <memory>
+#include <stdint.h>
+
+#include <boost/asio.hpp>
+
+#include "cube_types.h"
 
 namespace max_eq3 {
+
+//
 
 typedef struct cube_t
 {
@@ -29,6 +36,8 @@ typedef struct cube_t
            boost::asio::ip::udp::endpoint ep);
 
 } cube_t;
+
+using cube_sp = std::shared_ptr<cube_t>;
 
 }
 

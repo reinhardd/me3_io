@@ -15,6 +15,8 @@
 #include <boost/shared_ptr.hpp>
 #include <boost/algorithm/string.hpp>
 
+#include "cube.h"
+
 namespace boost {
     namespace system {
         class error_code;
@@ -40,71 +42,6 @@ enum struct devicetype : uint8_t {
     EcoButton = 5,
     Undefined = 255
 };
-
-enum struct changeflags : uint8_t {
-    set_temp,
-    act_temp,
-    mode,
-    config,
-    contained_devs,
-    valve_pos,
-};
-
-enum struct opmode {
-    AUTO,
-    MANUAL,
-    VACATION,
-    BOOST,
-};
-
-struct schedule_point
-{
-    double temp;
-    unsigned minutes_since_midnight;
-};
-
-enum {
-    Saturday = 0,
-    Sunday,
-    Monday,
-    Tuesday,
-    Wednesday,
-    Thursday,
-    Friday
-};
-
-#define DAYS_A_WEEK 7
-#define SCHED_POINTS 13
-
-using day_schedule = std::array<schedule_point, SCHED_POINTS>;
-using week_schedule = std::array<day_schedule, DAYS_A_WEEK>;
-
-using changeflag_set = std::set<changeflags>;
-
-using timestamped_valve_pos = std::pair<uint16_t, std::chrono::system_clock::time_point>;
-using timestamped_temp = std::pair<double, std::chrono::system_clock::time_point>;
-
-typedef struct room
-{
-    std::string         name;
-    timestamped_temp    set_temp;
-    timestamped_temp    actual_temp;
-    opmode              mode{opmode::AUTO};
-    timestamped_valve_pos
-                        valve_pos;
-
-    week_schedule       schedule;
-
-    unsigned            version;                // increments with every creation
-    changeflag_set      changed;
-    room()
-        : valve_pos(0,std::chrono::system_clock::now())
-    {}
-} room;
-
-using room_sp = std::shared_ptr<room>;
-
-using rfaddr_t = uint32_t;
 
 typedef struct radiator_thermostat
 {
@@ -141,13 +78,12 @@ class cube_event_target
 {
 public:
     virtual ~cube_event_target();
+    virtual void device_info(device_sp dsp) = 0;
     virtual void room_changed(room_sp rsp) = 0;
     virtual void connected()  = 0;
     virtual void disconnected() = 0;
 };
 
-class cube_t;
-using cube_sp = std::shared_ptr<cube_t>;
 
 class cube_io
 {
@@ -186,6 +122,7 @@ private:
     rfaddr_related search(rfaddr_t addr);
     void deploydata(const l_submsg_data &smd);
     void emit_changed_data();
+    void update_config(cube_sp csp);
 private:
     struct Private;
     std::unique_ptr<Private> _p;
