@@ -34,6 +34,7 @@ src/cube.cpp
 src/utils.cpp
 src/cube_log.cpp
 src/cube_mqtt_client.cpp
+src/io_operator.cpp
 )
 
 set_property(TARGET max2mqtt PROPERTY CXX_STANDARD 17)
