@@ -34,7 +34,7 @@ struct schedule_point
     unsigned minutes_since_midnight;
 };
 
-enum {
+enum struct days {
     Saturday = 0,
     Sunday,
     Monday,
