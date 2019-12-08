@@ -38,7 +38,6 @@ typedef struct dev_config
     uint16_t        room_id;
     uint16_t        fwversion;
     dev_config_v    specific;
-    // missing: the weekplan
 } dev_config;
 
 typedef struct room_conf
