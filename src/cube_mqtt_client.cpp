@@ -3,11 +3,12 @@
 #include <boost/algorithm/string.hpp>
 
 #include "cube_mqtt_client.h"
+#include "io_operator.h"
 
 
 namespace max_eq3 {
 
-const char *pRootTopic = "homie/";
+const char *pRootTopic = "max2mqtt/";
 
 homie_mqtt_client::homie_mqtt_client(const std::string &host, const std::string &port)
     : _is_connected(false)
@@ -169,6 +170,7 @@ void homie_mqtt_client::send_room(roomdata &roomd) // room_sp room)
         _tmit_ctrl[topic_root] = 0;
         _client->publish(topic_root + "$name", rname, mqtt::qos::at_least_once);
         _client->publish(topic_root + "$type", "heating", mqtt::qos::at_least_once);
+#if defined(HOMIE_CONVENTION)
         _client->publish(topic_root + "$properties", "act-temp,set-temp,valve-pos", mqtt::qos::at_least_once);
 
         _client->publish(topic_root + "act-temp/$name", "current temp", mqtt::qos::at_least_once);
@@ -188,15 +190,19 @@ void homie_mqtt_client::send_room(roomdata &roomd) // room_sp room)
         _client->publish(topic_root + "valve-pos/$unit", "°C", mqtt::qos::at_least_once);
         _client->publish(topic_root + "valve-pos/$settable", "true", mqtt::qos::at_least_once);
         _client->publish(topic_root + "valve-pos/$retained", "true", mqtt::qos::at_least_once);
+#endif
 
         std::cout << "subscribe to " << topic_root + "set" << std::endl;
-        _client->subscribe(topic_root + "set", mqtt::qos::at_least_once);
+        _client->subscribe(topic_root + "set_mode", mqtt::qos::at_least_once);
+        _client->subscribe(topic_root + "set_temp", mqtt::qos::at_least_once);
+        _client->subscribe(topic_root + "set_weekplan", mqtt::qos::at_least_once);
         _tmit_ctrl[topic_root] = _tmit_ctrl[topic_root] | 1;
     }
 
     _client->publish(topic_root + "act-temp", std::to_string(roomd.roomsp->actual_temp.first), mqtt::qos::at_least_once, true);
     _client->publish(topic_root + "set-temp", std::to_string(roomd.roomsp->set_temp.first), mqtt::qos::at_least_once, true);
     _client->publish(topic_root + "valve-pos", std::to_string(roomd.roomsp->valve_pos.first), mqtt::qos::at_least_once, true);
+    std::cout << "weekschedule for " << roomd.roomsp->schedule << std::endl;
 
 
 }
@@ -264,7 +270,7 @@ void homie_mqtt_client::complete()
         send_room(x.second);
     }
     std::string topic_root = pRootTopic +_device->name + "/";
-    _client->publish(topic_root + "$homie", "4.0", mqtt::qos::at_least_once);
+    _client->publish(topic_root + "$version", "1.0", mqtt::qos::at_least_once);
     _client->publish(topic_root + "$state", "ready", mqtt::qos::at_least_once);
 }
 
