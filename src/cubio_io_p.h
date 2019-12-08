@@ -33,7 +33,10 @@ struct m_room
     rfaddr_t group_rfaddr;
 };
 
-
+/**
+ * @brief The m_device struct
+ * filled from response 'm'
+ */
 struct m_device
 {
     devicetype  type;
@@ -61,9 +64,6 @@ struct cube_io::Private
 
     cube_event_target              *iet{nullptr};
 
-    cube_map_t                      cubes;      // managed cubes
-
-    // std::map<std::string, m_room>   room_defs;
     std::map<rfaddr_t, m_device>    device_defs;
 
     device_data_store               devconfigs;
@@ -74,6 +74,8 @@ struct cube_io::Private
                                     changeset;
 
     bool                            short_refresh{false};
+
+    cube_sp                         cube;
 
     unsigned                        confread { 0 };
     std::set<cnf_tags>              rcvd_configs { rd_timeserver };
