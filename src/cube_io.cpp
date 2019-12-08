@@ -1,6 +1,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <iostream>
 
 #include <boost/bind.hpp>
 #include <boost/lexical_cast.hpp>
@@ -8,6 +9,7 @@
 #include "cubio_io_p.h"
 #include "cube_log_internal.h"
 #include "utils.h"
+#include "io_operator.h"
 
 #define MULTICAST		"224.0.0.1"
 #define MAX_UDP_PORT		23272
@@ -35,6 +37,20 @@ bool m_response(std::string &&rawdata,
                 std::list<max_eq3::m_device> &devicelist);
 
 max_eq3::week_schedule get_schedule(const uint8_t *pD);
+
+const max_eq3::room_conf * get_room_config(const std::string &room, const max_eq3::device_data_store::roomconfmap &cmap)
+{
+    const max_eq3::room_conf * roomconfig = nullptr;
+
+    for (const auto &v: cmap)
+    {
+        if (room == v.second.name)
+            roomconfig = &v.second;
+    }
+    return roomconfig;
+}
+
+
 }
 
 namespace max_eq3 {
@@ -250,15 +266,16 @@ void cube_io::handle_mcast_response(const bs::error_code &error, size_t bytes_re
                       << "\n\tfw: " << cube->fwbc
                       << "\n\taddr: " << std::hex << cube->rfaddr << std::dec)
 
-                bool connect = (_p->cubes.find(cube->rfaddr) == _p->cubes.end());
-                _p->cubes[cube->rfaddr] = cube;
+                bool connect = !_p->cube;
                 if (connect)
                 {
                     ba::ip::tcp::endpoint ep(cube->addr, 62910);
-                    cube->sock.connect(ep);
+                    boost::system::error_code ec;
+                    cube->sock.connect(ep, ec);
+                    if (!ec)
+                        _p->cube = cube;
                 }
                 start_rx_from_cube(cube);
-
             }
 
         }
@@ -452,7 +469,8 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
                                           << " eco " << rthc.eco
                                           << " min " << rthc.min
                                           << " max " << rthc.max
-                                          << " tofs " << rthc.tofs)                                
+                                          << " tofs " << rthc.tofs
+                                          << " sched\n" << rthc.schedule)
                                 devconf.specific = rthc;
 
                             }
@@ -470,7 +488,9 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
                                           << " comfort " << wthc.comfort
                                           << " eco " << wthc.eco
                                           << " min " << wthc.min
-                                          << " max " << wthc.max)
+                                          << " max " << wthc.max
+                                          << " sched\n" << wthc.schedule
+                                     )
                                 devconf.specific = wthc;
                             }
                             break;
@@ -590,19 +610,20 @@ void cube_io::emit_changed_data()
     {
         if (!_p->deviceinfo)
         {
-            if (_p->cubes.size())
+            if (_p->cube)
             {
                 device_sp newdev = std::make_shared<device>();
-                cube_map_t::const_iterator ccit = _p->cubes.begin();
-                if (ccit != _p->cubes.end())
-                {
-                    newdev->name = ccit->second->serial;
-                    newdev->addr = ccit->second->addr.to_string();
+                // cube_map_t::const_iterator ccit = _p->cubes.begin();
+                // if (ccit != _p->cubes.end())
+                //{
+
+                    newdev->name = _p->cube->serial; // ccit->second->serial;
+                    newdev->addr = _p->cube->addr.to_string(); // ccit->second->addr.to_string();
                     LogI("newdev " << newdev->name << " a: " << newdev->addr)
                     _p->deviceinfo = newdev;
                     _p->iet->device_info(newdev);
                     std::this_thread::sleep_for(std::chrono::seconds(1));
-                }
+                // }
             }
         }
         for (const auto val: _p->changeset)
@@ -613,12 +634,13 @@ void cube_io::emit_changed_data()
                     rdmcit = _p->devconfigs.rooms.find(roomid);
             device_data_store::roomconfmap::const_iterator
                     rcfcit = _p->devconfigs.roomconf.find(roomid);
-            device_data_store::devicemap::const_iterator
-                    dmcit = _p->devconfigs.devconf.find(roomid);
 
             if ((rdmcit != _p->devconfigs.rooms.end())
                     && (rcfcit != _p->devconfigs.roomconf.end()))
             {
+
+                rfaddr_t for_schedule = 0;
+
                 // calc valve pos for room
                 timestamped_valve_pos valvepossum;
                 for (const auto x: rdmcit->second.valve_pos)
@@ -627,6 +649,8 @@ void cube_io::emit_changed_data()
                     valvepossum.first += cur.first;
                     if (valvepossum.second < cur.second)
                         valvepossum.second = cur.second;
+                    if (for_schedule == 0)
+                        for_schedule = x.first;
                 }
                 valvepossum.first /= rdmcit->second.valve_pos.size();
 
@@ -637,6 +661,30 @@ void cube_io::emit_changed_data()
                 room_sp newsp = gen_rsp(rcfcit->second, rdmcit->second, val.second, vers);
 
                 newsp->valve_pos = valvepossum;
+
+                // from room id -> schedule
+                rfaddr_t devrfaddr = rcfcit->second.wallthermostat;
+
+                if (!devrfaddr)
+                    devrfaddr = *rcfcit->second.thermostats.begin();
+
+                if (for_schedule)
+                {
+                    auto cit = _p->devconfigs.devconf.find(for_schedule);
+                    if (cit != _p->devconfigs.devconf.end())
+                    {
+                        dev_config dc = _p->devconfigs.devconf.find(for_schedule)->second;
+                        if (std::holds_alternative<radiatorThermostat_config>(dc.specific))
+                        {
+                            const radiatorThermostat_config *pConf = std::get_if<radiatorThermostat_config>(&dc.specific);
+                            if (pConf)
+                            {
+                                std::cout << "have schedule\n";
+                                newsp->schedule = pConf->schedule;
+                            }
+                        }
+                    }
+                }
 
                 _p->emit_rooms[roomid] = newsp;
 
@@ -708,7 +756,7 @@ void cube_io::do_send_mode(std::string room, opmode mode)
 
     if ((tmp & 0xC0) != 0)
     {
-        LogE("temp to high : " << tmp << std::endl)
+        LogE("wrong mode : " << std::hex << tmp << std::endl)
         return;
     }
 
@@ -727,10 +775,11 @@ void cube_io::do_send_mode(std::string room, opmode mode)
         break;
     }
 
-    emit_S_temp_mode(roomconfig->cube_rfaddr, roomconfig->rfaddr, roomconfig->id, tmp);
+    emit_S_temp_mode(roomconfig->rfaddr, roomconfig->id, tmp);
+
 }
 
-void cube_io::emit_S_temp_mode(rfaddr_t cubeto, rfaddr_t sendto, uint8_t roomid, uint8_t tmp_mode)
+void cube_io::emit_S_temp_mode(rfaddr_t sendto, uint8_t roomid, uint8_t tmp_mode)
 {
     std::ostringstream xs;
 
@@ -754,13 +803,14 @@ void cube_io::emit_S_temp_mode(rfaddr_t cubeto, rfaddr_t sendto, uint8_t roomid,
     std::string cmd2send = "s:" + encoded + "\r\n";
     LogV("should send " << dump(cmd2send) << std::endl)
 
-    if (_p->cubes.find(cubeto) == _p->cubes.end())
+    if (!_p->cube) // (_p->cubes.find(cubeto) == _p->cubes.end())
     {
         LogE("unable to find associated cube\n")
         return;
     }
 
-    auto csp = _p->cubes[cubeto];
+    auto csp = _p->cube; // _p->cubes[cubeto];
+
     ba::async_write(csp->sock,
                     ba::buffer(cmd2send),
                     [&](const boost::system::error_code &e, std::size_t bytes_transferred)
@@ -773,9 +823,64 @@ void cube_io::emit_S_temp_mode(rfaddr_t cubeto, rfaddr_t sendto, uint8_t roomid,
     );
 }
 
+namespace {
+}
+
+void cube_io::do_send_schedule(std::string room, days day, const day_schedule ds)
+{
+    LogV(__FUNCTION__ << " for room " << room << " to " << ds << std::endl)
+
+    const room_conf * roomconfig = get_room_config(room, _p->devconfigs.roomconf);
+    if (roomconfig == nullptr)
+    {
+        LogE("no room found for name " << room << std::endl)
+        return;
+    }
+    if (_p->devconfigs.rooms.find(roomconfig->id) == _p->devconfigs.rooms.end())
+    {
+        LogE("no roomdata found for name " << room << std::endl)
+        return;
+    }
+    room_data &roomdata = _p->devconfigs.rooms[roomconfig->id];
+
+    rfaddr_t sendto = roomconfig->rfaddr;
+    if (sendto == 0)
+    {
+        if (roomconfig->wallthermostat)
+            sendto = roomconfig->wallthermostat;
+        if (roomconfig->thermostats.size())
+        {
+            sendto = *roomconfig->thermostats.begin();
+        }
+    }
+
+    std::ostringstream xs;
+
+    append(xs, uint8_t(0), 1);              // Unknown
+    append(xs, uint8_t(4), 1);              // adress room
+    append(xs, uint8_t(0x10), 1);           // set Temperatur
+    append(xs, unsigned(0), 3);             // from rfaddr
+
+    append(xs, uint32_t(sendto), 3);            // to rfaddr
+    append(xs, uint8_t(roomconfig->id), 1);     // roomid
+    append(xs, uint8_t(day), 1);                // day
+
+    for (const auto n: ds)
+    {
+        uint16_t time = std::round(std::min(n.temp * 2, 128.0));
+        uint16_t date = n.minutes_since_midnight / 5;
+        uint16_t combined = (time << 9) + date;
+        append(xs, uint16_t(combined), 2);
+    }
+
+    // mark stored schedule data dirty
+
+}
+
+
 void cube_io::do_send_temp(std::string room, double temp)
 {
-    LogV(__FUNCTION__ << " for room " << room << " to " << temp << std::endl);
+    LogV(__FUNCTION__ << " for room " << room << " to " << temp << std::endl)
 
     const room_conf * roomconfig = nullptr;
 
@@ -792,7 +897,7 @@ void cube_io::do_send_temp(std::string room, double temp)
 
     if (_p->devconfigs.rooms.find(roomconfig->id) == _p->devconfigs.rooms.end())
     {
-        LogE("no roomdata found for name " << room << std::endl);
+        LogE("no roomdata found for name " << room << std::endl)
         return;
     }
     room_data &roomdata = _p->devconfigs.rooms[roomconfig->id];
@@ -854,13 +959,13 @@ void cube_io::do_send_temp(std::string room, double temp)
     std::string cmd2send = "s:" + encoded + "\r\n";
     LogV("should send " << dump(cmd2send) << std::endl)
 
-    if (_p->cubes.find(roomconfig->cube_rfaddr) == _p->cubes.end())
+    if (!_p->cube) // (_p->cubes.find(roomconfig->cube_rfaddr) == _p->cubes.end())
     {
         LogE("unable to find associated cube\n")
         return;
     }
 
-    auto csp = _p->cubes[roomconfig->cube_rfaddr];
+    auto csp = _p->cube; // _p->cubes[roomconfig->cube_rfaddr];
     ba::async_write(csp->sock,
                     ba::buffer(cmd2send),
                     [&](const boost::system::error_code &e, std::size_t bytes_transferred)
@@ -869,6 +974,8 @@ void cube_io::do_send_temp(std::string room, double temp)
                             LogE("set temp failed " << e << std::endl)
                         else
                             LogV("set temp done " << bytes_transferred << std::endl)
+
+
                     }
     );
 }
