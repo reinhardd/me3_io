@@ -33,9 +33,9 @@ https://github.com/redboltz/mqtt_cpp
 
   **per room**
 
-      max2mqtt/<cube-serial>/<room-name>/act_temp           # float temp in °C
-      max2mqtt/<cube-serial>/<room-name>/set_temp           # float temp in °C
-      max2mqtt/<cube-serial>/<room-name>/valve_pos          # unsigned 0 .. 100 in %
+      max2mqtt/<cube-serial>/<room-name>/act-temp           # float temp in °C
+      max2mqtt/<cube-serial>/<room-name>/set-temp           # float temp in °C
+      max2mqtt/<cube-serial>/<room-name>/valve-pos          # unsigned 0 .. 100 in %
       max2mqtt/<cube-serial>/<room-name>/mode               # "AUTO"|"MANUAL"|"BOOST"|"VACATION"
       max2mqtt/<cube-serial>/<room-name>/weekplan           # weekplan json object
 
@@ -59,10 +59,17 @@ https://github.com/redboltz/mqtt_cpp
 
     {
         room: "room_name",
-        <dayname> : {
-            endtime : "minutes_since_midnight / 5",
-            temp :    "<temperature>"
-        }
+        <dayname> : [
+            {
+                endtime : "minutes_since_midnight",
+                temp :    "<temperature>"
+            },
+            {
+                endtime : "minutes_since_midnight",
+                temp :    "<temperature>"
+            },
+            ....
+        ]
     }
 
     dayname ::= Saturday | Sunday | Monday | Tuesday | Wednesday | Thursday | Friday
@@ -83,10 +90,23 @@ prerequisites:
   needed libs: boost-dev libssl-dev
 
 
-    git clone ...
-    cd <dir>
-    make
+    git clone https://github.com/reinhardd/maxcube2mqtt.git
+    cd maxcube2mqtt
+    git submodule init
+    git submodule update
+    make -j 4
 
-build is done as an out-of-tree build within .native subdirectory. Sea
+build is done as an out-of-tree build within .native subdirectory.
+to run maxcube2mqtt run
 
+## Run
+
+    .native/maxcube2mqtt -m my_mqtt_broker
+
+You find yourself in a simple command shell that is sometimes updated by
+
+Currently maxcube2mqtt logs to the file xout.log inside the directory where it is run from.
+
+
+### listen to
 
