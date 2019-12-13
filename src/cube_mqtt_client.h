@@ -37,7 +37,7 @@ namespace max_eq3 {
  *                              /room1/weekschedule/$datatype   -> string
  *
  * */
-class homie_mqtt_client
+class mqtt_client
 {
     using client_type_t = mqtt::sync_client<mqtt::tcp_endpoint<boost::asio::ip::tcp::socket, boost::asio::io_service::strand>>;
     using packet_id_t = client_type_t::packet_id_t;
@@ -45,7 +45,7 @@ public:
 
     using set_method = std::function<void (std::string_view room, std::string_view data)>;
 
-    homie_mqtt_client(const std::string &host, const std::string &port);
+    mqtt_client(const std::string &host, const std::string &port);
     void expose_cube(device_sp dsp);
     void expose_room(room_sp rsp);
     void complete();
@@ -53,6 +53,8 @@ public:
     void stop();
 
     void set_setter(set_method m);
+
+private:
 private:    // types
     typedef struct roomdata
     {
@@ -69,6 +71,7 @@ private:
     void send_device();
     void update_nodes();
     void send_room(roomdata &roomd);
+    std::string to_json(const std::string &roomname, const week_schedule &ws);
 
     bool connack_handler(bool sp, std::uint8_t connack_return_code);
     void close_handler();
