@@ -77,9 +77,16 @@ https://github.com/redboltz/mqtt_cpp
 
 ## Build Instructions
 
-prerequisites: make cmake git c++ (capable of c++17)
+prerequisites:
+
+  needed tools: make cmake git c++ (capable of c++17)
+  needed libs: boost-dev libssl-dev
+
 
     git clone ...
     cd <dir>
     make
+
+build is done as an out-of-tree build within .native subdirectory. Sea
+
 
