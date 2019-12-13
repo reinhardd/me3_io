@@ -92,11 +92,11 @@ private:
     roommap rooms;
 
     cube_logger &_log;
-    max_eq3::homie_mqtt_client &_max_mqtt_client;
+    max_eq3::mqtt_client &_max_mqtt_client;
     mutable std::mutex   _mtx;
 
 public:
-    cube_io_callback(cube_logger &l, max_eq3::homie_mqtt_client &mqtt_client)
+    cube_io_callback(cube_logger &l, max_eq3::mqtt_client &mqtt_client)
         : _log(l)
         , _max_mqtt_client(mqtt_client)
     {}
@@ -246,7 +246,7 @@ int main(int argc, char *argv[])
     //            max_eq3::cube_mqtt_client::mode_set_fn_t());
 
 
-    max_eq3::homie_mqtt_client hmc(mqtthost, mqttport);
+    max_eq3::mqtt_client hmc(mqtthost, mqttport);
     std::thread t([&hmc](){
             std::cout << "hmc thread function\n";            
             hmc.run();
