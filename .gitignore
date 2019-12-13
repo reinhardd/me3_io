@@ -1,1 +1,8 @@
-third-party/*
+# qt creator files
+*.config
+*.creator
+*.cflags
+*.cxxflags
+*.files
+*.includes
+
