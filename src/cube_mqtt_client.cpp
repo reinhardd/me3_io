@@ -1,6 +1,8 @@
 
 #include <iostream>
 #include <boost/algorithm/string.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
 
 #include "cube_mqtt_client.h"
 #include "io_operator.h"
@@ -10,7 +12,7 @@ namespace max_eq3 {
 
 const char *pRootTopic = "max2mqtt/";
 
-homie_mqtt_client::homie_mqtt_client(const std::string &host, const std::string &port)
+mqtt_client::mqtt_client(const std::string &host, const std::string &port)
     : _is_connected(false)
     , _ready(false)
 {
@@ -19,29 +21,29 @@ homie_mqtt_client::homie_mqtt_client(const std::string &host, const std::string 
     _client->set_client_id("wbmqtti");
     _client->set_clean_session(true);
     // _client->set_auto_pub_response(true, true);
-    _client->set_close_handler(boost::bind(&homie_mqtt_client::close_handler, this));
-    _client->set_error_handler(boost::bind(&homie_mqtt_client::error_handler, this, _1));
-    _client->set_connack_handler(boost::bind(&homie_mqtt_client::connack_handler, this, _1, _2));
-    _client->set_puback_handler(boost::bind(&homie_mqtt_client::puback_handler, this, _1));
-    _client->set_suback_handler(boost::bind(&homie_mqtt_client::suback_handler, this, _1, _2));
-    _client->set_pubrec_handler(boost::bind(&homie_mqtt_client::pubrec_handler, this, _1));
-    _client->set_publish_handler(boost::bind(&homie_mqtt_client::publish_handler, this, _1, _2, _3, _4));
+    _client->set_close_handler(boost::bind(&mqtt_client::close_handler, this));
+    _client->set_error_handler(boost::bind(&mqtt_client::error_handler, this, _1));
+    _client->set_connack_handler(boost::bind(&mqtt_client::connack_handler, this, _1, _2));
+    _client->set_puback_handler(boost::bind(&mqtt_client::puback_handler, this, _1));
+    _client->set_suback_handler(boost::bind(&mqtt_client::suback_handler, this, _1, _2));
+    _client->set_pubrec_handler(boost::bind(&mqtt_client::pubrec_handler, this, _1));
+    _client->set_publish_handler(boost::bind(&mqtt_client::publish_handler, this, _1, _2, _3, _4));
     std::cout << "connect\n";
     _client->connect();
 }
 
-void homie_mqtt_client::set_setter(set_method m)
+void mqtt_client::set_setter(set_method m)
 {
     _setm = m;
 }
 
-void homie_mqtt_client::stop()
+void mqtt_client::stop()
 {
     _ios.stop();
     std::this_thread::sleep_for(std::chrono::seconds(3));
 }
 
-bool homie_mqtt_client::connack_handler(bool sp, std::uint8_t connack_return_code)
+bool mqtt_client::connack_handler(bool sp, std::uint8_t connack_return_code)
 {
     std::cout << "Connack handler called" << std::endl;
     std::cout << "Clean Session: " << std::boolalpha << sp << std::endl;
@@ -66,40 +68,40 @@ bool homie_mqtt_client::connack_handler(bool sp, std::uint8_t connack_return_cod
     return true;
 }
 
-void homie_mqtt_client::close_handler()
+void mqtt_client::close_handler()
 {}
 
-void homie_mqtt_client::error_handler(boost::system::error_code const& ec)
+void mqtt_client::error_handler(boost::system::error_code const& ec)
 {
     std::cout << "error: " << ec << std::endl;
 }
 
-bool homie_mqtt_client::puback_handler(packet_id_t packet_id)
+bool mqtt_client::puback_handler(packet_id_t packet_id)
 {
     // std::cout << "puback received. packet_id: " << packet_id << std::endl;
     return true;
 }
 
-bool homie_mqtt_client::pubrec_handler(packet_id_t packet_id)
+bool mqtt_client::pubrec_handler(packet_id_t packet_id)
 {
-    std::cout << "pubrec received. packet_id: " << packet_id << std::endl;
+    // std::cout << "pubrec received. packet_id: " << packet_id << std::endl;
     return true;
 }
 
-void homie_mqtt_client::pubcomp_handler(packet_id_t packet_id)
+void mqtt_client::pubcomp_handler(packet_id_t packet_id)
 {
     std::cout << "pubcomp received. packet_id: " << packet_id << std::endl;
 }
 
-bool homie_mqtt_client::suback_handler(packet_id_t packet_id, std::vector<mqtt::optional<std::uint8_t>> qoss)
+bool mqtt_client::suback_handler(packet_id_t packet_id, std::vector<mqtt::optional<std::uint8_t>> qoss)
 {
-    std::cout << "suback received. packet_id: " << packet_id << std::endl;
+    // std::cout << "suback received. packet_id: " << packet_id << std::endl;
     for (auto const& e : qoss) {
         if (e) {
-            std::cout << "subscribe success: " << mqtt::qos::to_str(*e) << std::endl;
+            // std::cout << "subscribe success: " << mqtt::qos::to_str(*e) << std::endl;
         }
         else {
-            std::cout << "subscribe failed" << std::endl;
+            std::cout << "subscribe failed for packet " << packet_id << std::endl;
         }
     }
 #if 0
@@ -114,7 +116,7 @@ bool homie_mqtt_client::suback_handler(packet_id_t packet_id, std::vector<mqtt::
     return true;
 }
 
-bool homie_mqtt_client::publish_handler(std::uint8_t header,
+bool mqtt_client::publish_handler(std::uint8_t header,
                      boost::optional<packet_id_t> packet_id,
                      mqtt::buffer topic_name,
                      mqtt::buffer contents)
@@ -154,12 +156,12 @@ bool homie_mqtt_client::publish_handler(std::uint8_t header,
     return true;
 }
 
-void homie_mqtt_client::run()
+void mqtt_client::run()
 {
     _ios.run();
 }
 
-void homie_mqtt_client::send_room(roomdata &roomd) // room_sp room)
+void mqtt_client::send_room(roomdata &roomd) // room_sp room)
 {
     std::string rname = roomd.roomsp->name;
     std::cout << "do emit room data for " << rname << std::endl;
@@ -192,7 +194,7 @@ void homie_mqtt_client::send_room(roomdata &roomd) // room_sp room)
         _client->publish(topic_root + "valve-pos/$retained", "true", mqtt::qos::at_least_once);
 #endif
 
-        std::cout << "subscribe to " << base_topic_room + "set" << std::endl;
+        // std::cout << "subscribe to " << base_topic_room + "set" << std::endl;
         _client->subscribe(base_topic_room + "set/mode", mqtt::qos::at_least_once);
         _client->subscribe(base_topic_room + "set/temp", mqtt::qos::at_least_once);
         _client->subscribe(base_topic_room + "set/weekplan", mqtt::qos::at_least_once);
@@ -211,13 +213,14 @@ void homie_mqtt_client::send_room(roomdata &roomd) // room_sp room)
         case opmode::VACATION: mode = "VACATION"; break;
     }
     _client->publish(base_topic_room + "mode", mode, mqtt::qos::at_least_once, true);
+    _client->publish(base_topic_room + "weekplan", to_json(rname, roomd.roomsp->schedule), mqtt::qos::at_least_once, true);
 
-    std::cout << "weekschedule for " << roomd.roomsp->schedule << std::endl;
-
-
+    // std::cout << "weekschedule for " << roomd.roomsp->schedule
+    //          << "\njson ###\n" << to_json(rname, roomd.roomsp->schedule)
+    //          << std::endl;
 }
 
-void homie_mqtt_client::send_device()
+void mqtt_client::send_device()
 {
     std::cout << "do emit cube data" << std::endl;
 #if defined(HOMIE_CONVENTION)
@@ -230,7 +233,7 @@ void homie_mqtt_client::send_device()
     update_nodes();
 }
 
-void homie_mqtt_client::update_nodes()
+void mqtt_client::update_nodes()
 {
     std::string nodes;
     bool first = true;
@@ -258,7 +261,7 @@ void homie_mqtt_client::update_nodes()
     _client->publish(topic_root.str() + "rooms", nodes, mqtt::qos::at_least_once);
 }
 
-void homie_mqtt_client::expose_cube(device_sp dsp)
+void mqtt_client::expose_cube(device_sp dsp)
 {
     std::cout << __FUNCTION__ << std::endl;
     _ios.post([this, dsp]()
@@ -272,7 +275,7 @@ void homie_mqtt_client::expose_cube(device_sp dsp)
 }
 
 
-void homie_mqtt_client::complete()
+void mqtt_client::complete()
 {
     std::cout << "device is complete" << std::endl;
     _ready = true;
@@ -286,7 +289,7 @@ void homie_mqtt_client::complete()
     _client->publish(topic_root + "$state", "ready", mqtt::qos::at_least_once);
 }
 
-void homie_mqtt_client::expose_room(room_sp rsp)
+void mqtt_client::expose_room(room_sp rsp)
 {
     std::cout << __FUNCTION__ << std::endl;
     _ios.post([this, rsp]()
@@ -311,6 +314,43 @@ void homie_mqtt_client::expose_room(room_sp rsp)
             }
         }
     });
+}
+
+static const char *day_text[7] = {
+    "saturday", "sunday", "monday", "tuesday", "wednesday", "thursday", "friday"
+};
+
+std::string mqtt_client::to_json(const std::string &roomname, const week_schedule &ws)
+{
+    using namespace boost::property_tree;
+
+    ptree jsout;
+    jsout.add("room", roomname);
+
+    ptree dayout;
+    for (unsigned day = static_cast<unsigned>(days::Saturday);
+                  day <= static_cast<unsigned>(days::Friday); day++)
+    {
+
+        const day_schedule &ds(ws[day]);
+        bool seen_end = false;
+        for (const auto &oneslot: ds)
+        {
+            if (!seen_end)
+            {
+                ptree schedpt;
+                schedpt.add("endtime", oneslot.minutes_since_midnight);
+                schedpt.add("temp", oneslot.temp);
+                dayout.add_child("", schedpt);
+                seen_end = (oneslot.minutes_since_midnight == 1440);
+            }
+        }
+        jsout.add_child(day_text[day], dayout);
+    }
+
+    std::ostringstream jsonout;
+    json_parser::write_json(jsonout,jsout);
+    return jsonout.str();
 }
 
 
