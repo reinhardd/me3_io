@@ -4,7 +4,7 @@ last modified: 13. Dec. 2019
 
 Provides access to an EQ3 Max Cube heating control system via MQTT
 
-!!! This is a work in process, so don't expect to work anything. !!!
+**!!! This is work in process, don't expect anything to work. !!!**
 
 ** Motivation **
 
@@ -87,6 +87,7 @@ https://github.com/redboltz/mqtt_cpp
 prerequisites:
 
   needed tools: make cmake git c++ (capable of c++17)
+
   needed libs: boost-dev libssl-dev
 
 
