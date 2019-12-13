@@ -5,4 +5,6 @@
 *.cxxflags
 *.files
 *.includes
-
+*.creator.*
+xout.log
+.native
