@@ -27,7 +27,7 @@ link_directories(
 ######################
 # server target
 
-add_executable(max2mqtt
+add_executable(maxcube2mqtt
 src/main.cpp
 src/cube_io.cpp
 src/cube.cpp
@@ -37,10 +37,9 @@ src/cube_mqtt_client.cpp
 src/io_operator.cpp
 )
 
-set_property(TARGET max2mqtt PROPERTY CXX_STANDARD 17)
+set_property(TARGET maxcube2mqtt PROPERTY CXX_STANDARD 17)
 
-target_link_libraries(max2mqtt
+target_link_libraries(maxcube2mqtt
     ${Boost_LIBRARIES}
     pthread
     )
-
