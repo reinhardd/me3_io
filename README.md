@@ -104,7 +104,8 @@ to run maxcube2mqtt run
 
     .native/maxcube2mqtt -m my_mqtt_broker
 
-You find yourself in a simple command shell that is sometimes updated by
+You find yourself in a simple command shell that is regularly updated with the actual data from max cube.
+Type help list the available commands.
 
 Currently maxcube2mqtt logs to the file xout.log inside the directory where it is run from.
 
