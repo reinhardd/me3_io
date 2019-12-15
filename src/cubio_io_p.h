@@ -60,6 +60,9 @@ struct cube_io::Private
     uint8_t                         recvline[32];   // initial udp acceptance buffer for broadcast response
     boost::asio::ip::udp::endpoint  mcast_endpoint;
 
+    bool                            mcast_repeat = { false };
+    boost::asio::steady_timer       mcast_timeout;
+
     std::thread                     io_thread;
 
     cube_event_target              *iet{nullptr};
@@ -79,6 +82,9 @@ struct cube_io::Private
 
     unsigned                        confread { 0 };
     std::set<cnf_tags>              rcvd_configs { rd_timeserver };
+    Private()
+        : mcast_timeout(io)
+    {}
 };
 }
 #endif // CUBIO_IO_P_H
