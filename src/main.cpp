@@ -13,6 +13,7 @@
 
 #include "cube_io.h"
 #include "cube_log.h"
+#include "utils.h"
 
 namespace bpo = boost::program_options;
 
@@ -117,7 +118,7 @@ public:
             rooms[rsp->name] = rsp;            
         }
         std::cout << "rchanged " << rsp->name
-                  << " m:" << int(rsp->mode)
+                  << " m:" << max_eq3::mode_as_string(rsp->mode)
                   << " s:" << rsp->set_temp
                   << " a:" << rsp->actual_temp
                   << " v:" << rsp->valve_pos
@@ -150,6 +151,8 @@ public:
                 }
             }
             xs << "]";
+            std::cout << "changelog " << xs.str() << std::endl;
+
             _log.info()->get() << xs.str() << std::endl;
             // *(_log.info()) << xs.str() << std::endl;
         }
@@ -194,16 +197,7 @@ public:
         for (const auto &v: tmp)
         {
             os << "\t" << v.first
-               << " m: "; // << int(v.second->mode)
-            switch (v.second->mode)
-            {
-            case max_eq3::opmode::AUTO:       os << "auto    "; break;
-            case max_eq3::opmode::MANUAL:     os << "manual  "; break;
-            case max_eq3::opmode::VACATION:   os << "vacation"; break;
-            case max_eq3::opmode::BOOST:      os << "boost   "; break;
-            default:
-                os << "unknown_" << int(v.second->mode) << "_";
-            }
+               << " m: " << max_eq3::mode_as_string(v.second->mode); // << int(v.second->mode)
             os << " set(" << v.second->set_temp
                << ") act(" << v.second->actual_temp;
             os << ") valve(" << v.second->valve_pos << ")"; // .first << "%: " << timeinfo(v.second->valve_pos.second);
@@ -314,73 +308,55 @@ int main(int argc, char *argv[])
         }
         else if (cmdstring.substr(0,4) == "temp")
         {
-            std::string scmd = cmdstring.substr(5);
-            std::vector<std::string> spv;
-            boost::split(spv, scmd, boost::is_any_of(" "), boost::token_compress_on);
-
+            // std::string scmd = cmdstring.substr(5);
+            cmdstring.erase(0,5);
             std::string roomname;
+            if (parse_room(cmdstring, roomname))
+            {
+                boost::trim(cmdstring);
 
-            if (spv.size() != 2)
-            {
-                std::cerr << "invalid syntax <" << cmdstring << "> usage: temp kitchen 19.5 \n";
-            }
-            else
-            {
-                if (!cic.has_room(spv[0]))
-                {
-                    std::cerr << "no room named " << spv[0] << std::endl;
-                }
-                else
-                {
-                    double temp = boost::lexical_cast<double>(spv[1]);
-                    if (temp >= 31.6)
-                    {
-                        std::cerr << "temp higher than 31.5°C: " << temp << std::endl;
-                    }
-                    else
-                        cub.change_set_temp(spv[0], temp);
+                try {
+                    double temp = boost::lexical_cast<double>(cmdstring);
+                    cub.change_set_temp(roomname, temp);
+                } catch(boost::bad_lexical_cast &e) {
+                    std::cerr << "error reading temperature: " << e.what() << std::endl;
                 }
             }
         }
+#if 0
         else if (cmdstring == "complete")
         {
             cic.complete();
         }
+#endif
         else if (cmdstring.substr(0,4) == "mode")
         {
-            std::string scmd = cmdstring.substr(5);
-            std::vector<std::string> spv;
-            boost::split(spv, scmd, boost::is_any_of(" "), boost::token_compress_on);
-            if (spv.size() != 2)
+            cmdstring.erase(0,5);
+            std::string roomname;
+            if (parse_room(cmdstring, roomname))
             {
-                std::cerr << "invalid syntax <" << cmdstring << "> usage: temp kitchen 19.5 \n";
-            }
-            else
-            {
-                if (!cic.has_room(spv[0]))
+                boost::trim(cmdstring);
+                max_eq3::opmode mode;
+                if (cmdstring.substr(0,4) == "auto")
+                    mode = max_eq3::opmode::AUTO;
+                else if (cmdstring.substr(0,6) == "manual")
+                    mode = max_eq3::opmode::MANUAL;
+                else if (cmdstring.substr(0,5) == "boost")
+                    mode = max_eq3::opmode::BOOST;
+                else if (cmdstring.substr(0,8) == "vacation")
                 {
-                    std::cerr << "no room named " << spv[0] << std::endl;
+                    std::cerr << "vacation mode not yet implemented\n";
                 }
+                // for VACATION we need more parameters
                 else
                 {
-                    max_eq3::opmode mode;
-                    if (spv[1] == "auto")
-                        mode = max_eq3::opmode::AUTO;
-                    else if (spv[1] == "manual")
-                        mode = max_eq3::opmode::MANUAL;
-                    else if (spv[1] == "boost")
-                        mode = max_eq3::opmode::BOOST;
-                    // for VACATION we need more parameters
-                    else
-                    {
-                        std::cerr << "invalid parameter " << spv[1] << std::endl;
-                        continue;
-                    }
-                    cub.change_mode(spv[0], mode);
+                    std::cerr << "mode set invalid parameter: " << cmdstring << std::endl;
+                    continue;
                 }
+                cub.change_mode(roomname, mode);
             }
-        }        
-        else
+        }
+        else if (cmdstring.size())
         {
             std::cout << "unknown command " << cmdstring << std::endl;
         }
