@@ -17,6 +17,10 @@ topics for every room under control of the cube.
 
 No configuration interface is implemented by now.
 
+maxcube2mqtt is designed to talk exactly to one cube. Without specifying a cube by his serial-no
+maxcube2mqtt connects to the first cube that responds to the UDP multicast to port 23272.
+Use the -s parameter to select a specific the cube.
+
 ** Credits **
 
 https://github.com/Bouni/max-cube-protocol
