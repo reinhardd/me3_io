@@ -373,7 +373,7 @@ std::string mqtt_client::to_json(const std::string &roomname, const week_schedul
         output << "\n  ]";
     }
     output << "\n}";
-    std::cout << "to_json " << roomname << " \n" << output.str() << std::endl;
+    // std::cout << "to_json " << roomname << " \n" << output.str() << std::endl;
     return output.str();
 }
 
