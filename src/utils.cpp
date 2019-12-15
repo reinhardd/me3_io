@@ -4,6 +4,7 @@
 #include <boost/archive/iterators/binary_from_base64.hpp>
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/transform_width.hpp>
+#include <boost/algorithm/string.hpp>
 
 
 #include "utils.h"
@@ -106,5 +107,83 @@ std::string encode64(const std::string& s)
   return os.str();
 }
 
+std::string mode_as_string(opmode m)
+{
+    switch (m)
+    {
+    case opmode::AUTO: return "AUTO";
+    case opmode::BOOST: return "BOOST";
+    case opmode::MANUAL: return "MANUAL";
+    case opmode::VACATION: return "VACATION";
+    }
+    std::ostringstream xs;
+    xs << "MODE " << static_cast<unsigned>(m) << " ?";
+    return xs.str();
+}
 
 }
+
+bool parse_room(std::string &input, std::string &roomname)
+{
+    std::string tmp = input;
+    boost::trim(tmp);
+    enum struct pstate_e {
+        none,
+        double_qmarks,
+        single_qmarks,
+    } pstate;
+
+    unsigned cpos = 0;
+    switch (tmp[0])
+    {
+    case '"':
+        pstate = pstate_e::double_qmarks;
+        cpos = 1;
+        break;
+    case '\'':
+        pstate = pstate_e::single_qmarks;
+        cpos = 1;
+        break;
+    default:
+        pstate = pstate_e::none;
+    }
+
+    std::string rname;
+    while (true)
+    {
+        if (cpos == tmp.size())
+            return false;
+
+        switch (tmp[cpos])
+        {
+        case ' ':
+            if (pstate == pstate_e::none)
+            {
+                roomname = rname;
+                input = tmp.substr(cpos+1);
+                return true;
+            }
+            break;
+        case '\'':
+            if (pstate == pstate_e::single_qmarks)
+            {
+                roomname = rname;
+                input = tmp.substr(cpos+1);
+                return true;
+            }
+            break;
+        case '"':
+            if (pstate == pstate_e::double_qmarks)
+            {
+                roomname = rname;
+                input = tmp.substr(cpos+1);
+                return true;
+            }
+            break;
+        }
+        rname.push_back(tmp[cpos]);
+        cpos++;
+    }
+}
+
+

@@ -12,6 +12,8 @@ namespace max_eq3 {
     std::string decode64(const std::string& s);
     std::string encode64(const std::string& s);
 
+    std::string mode_as_string(opmode m);
+
 }
 
 template <typename RT>
@@ -33,5 +35,15 @@ RT fromPtr(const char *p, std::size_t len = sizeof(RT))
 {
     return fromPtr<RT>((const uint8_t *)p, len);
 }
+
+/**
+ * @brief parse_room
+ * @param input
+ * @param roomname
+ * @return
+ *
+ * possibly not UTF-8 safe
+ */
+bool parse_room(std::string &input, std::string &roomname);
 
 #endif // UTILS_H
