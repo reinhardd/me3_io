@@ -1,11 +1,10 @@
 
 #include <iostream>
 #include <boost/algorithm/string.hpp>
-#include <boost/property_tree/ptree.hpp>
-#include <boost/property_tree/json_parser.hpp>
 
 #include "cube_mqtt_client.h"
 #include "io_operator.h"
+#include "utils.h"
 
 
 namespace max_eq3 {
@@ -45,10 +44,10 @@ void mqtt_client::stop()
 
 bool mqtt_client::connack_handler(bool sp, std::uint8_t connack_return_code)
 {
-    std::cout << "Connack handler called" << std::endl;
-    std::cout << "Clean Session: " << std::boolalpha << sp << std::endl;
-    std::cout << "Connack Return Code: "
-              << mqtt::connect_return_code_to_str(connack_return_code) << std::endl;
+    // std::cout << "Connack handler called" << std::endl;
+    // std::cout << "Clean Session: " << std::boolalpha << sp << std::endl;
+    // std::cout << "Connack Return Code: "
+    //           << mqtt::connect_return_code_to_str(connack_return_code) << std::endl;
     if (connack_return_code == mqtt::connect_return_code::accepted)
     {
         if (!_is_connected)
@@ -65,6 +64,11 @@ bool mqtt_client::connack_handler(bool sp, std::uint8_t connack_return_code)
             _is_connected = true;
         }
     }
+    else
+        std::cerr << "connection denied: "
+                  << mqtt::connect_return_code_to_str(connack_return_code)
+                  << std::endl;
+
     return true;
 }
 
@@ -164,7 +168,7 @@ void mqtt_client::run()
 void mqtt_client::send_room(roomdata &roomd) // room_sp room)
 {
     std::string rname = roomd.roomsp->name;
-    std::cout << "do emit room data for " << rname << std::endl;
+    // std::cout << "do emit room data for " << rname << std::endl;
     std::string base_topic_room = pRootTopic + _device->name + "/" + rname + "/";
 
     if ((_tmit_ctrl.find(base_topic_room) == _tmit_ctrl.end()) || (_tmit_ctrl[base_topic_room] & 1) == 0)
@@ -204,14 +208,7 @@ void mqtt_client::send_room(roomdata &roomd) // room_sp room)
     _client->publish(base_topic_room + "act-temp", std::to_string(roomd.roomsp->actual_temp.first), mqtt::qos::at_least_once, true);
     _client->publish(base_topic_room + "set-temp", std::to_string(roomd.roomsp->set_temp.first), mqtt::qos::at_least_once, true);
     _client->publish(base_topic_room + "valve-pos", std::to_string(roomd.roomsp->valve_pos.first), mqtt::qos::at_least_once, true);
-    std::string mode = "UNKNOWN";
-    switch (roomd.roomsp->mode)
-    {
-        case opmode::AUTO: mode = "AUTO"; break;
-        case opmode::MANUAL: mode = "MANUAL"; break;
-        case opmode::BOOST: mode = "BOOST"; break;
-        case opmode::VACATION: mode = "VACATION"; break;
-    }
+    std::string mode = mode_as_string(roomd.roomsp->mode);
     _client->publish(base_topic_room + "mode", mode, mqtt::qos::at_least_once, true);
     _client->publish(base_topic_room + "weekplan", to_json(rname, roomd.roomsp->schedule), mqtt::qos::at_least_once, true);
 
@@ -222,7 +219,6 @@ void mqtt_client::send_room(roomdata &roomd) // room_sp room)
 
 void mqtt_client::send_device()
 {
-    std::cout << "do emit cube data" << std::endl;
 #if defined(HOMIE_CONVENTION)
     std::string topic_root = pRootTopic + _device->name + "/";
     _client->publish(topic_root + "$homie", "4.0", mqtt::qos::at_least_once);
@@ -263,7 +259,6 @@ void mqtt_client::update_nodes()
 
 void mqtt_client::expose_cube(device_sp dsp)
 {
-    std::cout << __FUNCTION__ << std::endl;
     _ios.post([this, dsp]()
     {
         if (_is_connected)
@@ -291,7 +286,7 @@ void mqtt_client::complete()
 
 void mqtt_client::expose_room(room_sp rsp)
 {
-    std::cout << __FUNCTION__ << std::endl;
+    // std::cout << __FUNCTION__ << std::endl;
     _ios.post([this, rsp]()
     {
         // std::cout << "inside " << __FUNCTION__ << std::endl;
@@ -309,7 +304,7 @@ void mqtt_client::expose_room(room_sp rsp)
             send_room(room_it->second);
             if (updnode)
             {
-                std::cout << "update node for room " << room_it->first << std::endl;
+                // std::cout << "update node for room " << room_it->first << std::endl;
                 update_nodes();
             }
         }
@@ -322,35 +317,64 @@ static const char *day_text[7] = {
 
 std::string mqtt_client::to_json(const std::string &roomname, const week_schedule &ws)
 {
-    using namespace boost::property_tree;
+    // using namespace boost::property_tree;
+#if defined(format)
+    {
+        "room" : "<roomname>",
+        "saturday" : [
+          {
+            "endtime" : "755",
+            "temp" : "16.0",
+          }
+        ],
+        "tuesday" : [
+          {
+            "endtime" : "755",
+            "temp" : "16.0",
+          },
+          {
+            "endtime" : "755",
+            "temp" : "16.0",
+          }
+        ],
+    }
+#endif
+    std::ostringstream output;
 
-    ptree jsout;
-    jsout.add("room", roomname);
+    output << "{\n  \"room\" : \"" << roomname << "\" ,\n";
 
-    ptree dayout;
+    bool firstday = true;
     for (unsigned day = static_cast<unsigned>(days::Saturday);
                   day <= static_cast<unsigned>(days::Friday); day++)
     {
-
+        if (!firstday)
+            output << ",\n";
+        else
+            firstday = false;
+        output << "  \"" << day_text[day] << "\" : [\n";
         const day_schedule &ds(ws[day]);
         bool seen_end = false;
+        bool first = true;
         for (const auto &oneslot: ds)
         {
             if (!seen_end)
             {
-                ptree schedpt;
-                schedpt.add("endtime", oneslot.minutes_since_midnight);
-                schedpt.add("temp", oneslot.temp);
-                dayout.add_child("", schedpt);
+                std::ostringstream sent;
+                if (!first)
+                    sent << ",\n";
+                else
+                    first = false;
+                sent << "    {\n      \"endtime\" : \"" << oneslot.minutes_since_midnight << "\",\n"
+                     << "      \"temp\" : \"" << oneslot.temp << "\"\n    }";
                 seen_end = (oneslot.minutes_since_midnight == 1440);
+                output << sent.str();
             }
         }
-        jsout.add_child(day_text[day], dayout);
+        output << "\n  ]";
     }
-
-    std::ostringstream jsonout;
-    json_parser::write_json(jsonout,jsout);
-    return jsonout.str();
+    output << "\n}";
+    std::cout << "to_json " << roomname << " \n" << output.str() << std::endl;
+    return output.str();
 }
 
 
