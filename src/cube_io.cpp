@@ -277,7 +277,10 @@ void cube_io::handle_mcast_response(const bs::error_code &error, size_t bytes_re
                 }
                 start_rx_from_cube(cube);
             }
-
+        }
+        else if (bytes_recvd == 19)
+        {
+            LogV("rcvd bcast himself");
         }
     }
     // restart broadcast receive
@@ -580,7 +583,7 @@ void cube_io::deploydata(const l_submsg_data &smd)
                 if (smd.act_temp != 0.0)
                     rd.change(rd.act, smd.act_temp, rcfs, changeflags::act_temp);
                 rd.change(rd.set, smd.set_temp, rcfs, changeflags::set_temp);
-                LogI("mode " << std::hex << int(rd.mode) << " -- " << (smd.flags & 0x3));
+                LogI("mode " << std::hex << int(rd.mode) << " -- " << (smd.flags & 0x3) << " rfaddr " << smd.rfaddr << std::dec);
                 rd.change(rd.mode, static_cast<opmode>(smd.flags & 0x3), rcfs, changeflags::mode);
                 rd.change(rd.flags[smd.rfaddr], smd.flags, rcfs, changeflags::contained_devs);
                 rd.change(smd.rfaddr, smd.valve_pos, rcfs);
@@ -589,6 +592,7 @@ void cube_io::deploydata(const l_submsg_data &smd)
         case devicetype::WallThermostat:
             rd.change(rd.act, smd.act_temp, rcfs, changeflags::act_temp);
             rd.change(rd.set, smd.set_temp, rcfs, changeflags::set_temp);
+            LogI("mode wt " << std::hex << int(rd.mode) << " -- " << (smd.flags & 0x3) << " rfaddr " << smd.rfaddr <<  std::dec);
             rd.change(rd.mode, static_cast<opmode>(smd.flags & 0x3), rcfs, changeflags::mode);
             rd.change(rd.flags[smd.rfaddr], smd.flags, rcfs, changeflags::contained_devs);
             break;
@@ -679,9 +683,10 @@ void cube_io::emit_changed_data()
                             const radiatorThermostat_config *pConf = std::get_if<radiatorThermostat_config>(&dc.specific);
                             if (pConf)
                             {
-                                std::cout << "have schedule\n";
                                 newsp->schedule = pConf->schedule;
                             }
+                            else
+                                std::cout << "schedule missing for room: " << rcfcit->second.name << std::endl;
                         }
                     }
                 }
@@ -1063,7 +1068,7 @@ week_schedule get_schedule(const uint8_t *pD)
             unsigned until = (lsb & 1 ? 0x100 : 0);
             until += msb;
             ws[u][x].minutes_since_midnight = until * 5;
-            LogV("sd " << u << ':' << x << " " << ws[u][x].temp << "°C " << ws[u][x].minutes_since_midnight)
+            // LogV("sd " << u << ':' << x << " " << ws[u][x].temp << "°C " << ws[u][x].minutes_since_midnight)
             pD += 2;
 
         }
