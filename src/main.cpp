@@ -151,7 +151,7 @@ public:
                 }
             }
             xs << "]";
-            std::cout << "changelog " << xs.str() << std::endl;
+            // std::cout << "changelog " << xs.str() << std::endl;
 
             _log.info()->get() << xs.str() << std::endl;
             // *(_log.info()) << xs.str() << std::endl;
@@ -235,11 +235,6 @@ int main(int argc, char *argv[])
     std::cout << "using mqtt host at " << mqtthost << ":" << mqttport << std::endl;
 
 
-    // max_eq3::cube_mqtt_client connector(
-    //            max_eq3::cube_mqtt_client::temp_set_fn_t(),
-    //            max_eq3::cube_mqtt_client::mode_set_fn_t());
-
-
     max_eq3::mqtt_client hmc(mqtthost, mqttport);
     std::thread t([&hmc](){
             std::cout << "hmc thread function\n";            
@@ -251,33 +246,32 @@ int main(int argc, char *argv[])
     max_eq3::cube_io::set_logger(&cl);
     cube_io_callback cic(cl, hmc);
     max_eq3::cube_io cub(&cic, cubeserial);
-    hmc.set_setter([&cub](std::string_view room, std::string_view cmd) {
+    hmc.set_setter([&cub](std::string_view room, std::string_view target, std::string_view data) {
 
-        std::string sroom(room.begin(), room.end());
-        if (cmd.substr(0,5) == "temp:")
+        std::cout << "setter for room " << room << " target " << target << " data " << data << std::endl;
+        if (target == "temp")
         {
-            std::string parms(cmd.begin() + 5, cmd.end());
-            std::istringstream is(parms);
+            // std::string parms(cmd.begin() + 5, cmd.end());
+            std::istringstream is(std::string(data.begin(), data.end()));
             double temp;
             is >> temp;
             std::cout << "set temp for " << room << " to " << temp << std::endl;
-            cub.change_set_temp(sroom, temp);
+            cub.change_set_temp(std::string(room.begin(), room.end()), temp);
         }
-        else if (cmd.substr(0,5) == "mode:")
-        {
-            std::string_view x = cmd.substr(5);
+        else if (target == "mode")
+        {            
             boost::optional<max_eq3::opmode> m;
-            if (x == "auto")
+            if (data == "auto")
                 m = max_eq3::opmode::AUTO;
-            else if (x == "manual")
+            else if (data == "manual")
                 m = max_eq3::opmode::MANUAL;
-            else if (x == "boost")
+            else if (data == "boost")
                 m = max_eq3::opmode::BOOST;
 
             if (m)
             {
-                std::cout << "change mode for " << room << " to " << x << std::endl;
-                cub.change_mode(sroom, *m);
+                std::cout << "change mode for " << room << " to " << mode_as_string(*m) << std::endl;
+                cub.change_mode(std::string(room.begin(), room.end()), *m);
             }
         }
 
