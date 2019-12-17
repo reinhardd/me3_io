@@ -43,3 +43,4 @@ target_link_libraries(maxcube2mqtt
     ${Boost_LIBRARIES}
     pthread
     )
+install(TARGETS maxcube2mqtt DESTINATION bin)
