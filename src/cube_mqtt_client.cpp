@@ -52,7 +52,7 @@ bool mqtt_client::connack_handler(bool sp, std::uint8_t connack_return_code)
     {
         if (!_is_connected)
         {
-            std::cout << "set connected\n";
+            std::cout << "mqtt set connected\n";
             if (_device)
             {
                 send_device();
@@ -143,16 +143,9 @@ bool mqtt_client::publish_handler(std::uint8_t header,
         std::cout << "valid topic " << target << std::endl;
         std::vector<std::string> out;
         boost::split(out, topic_name, boost::is_any_of("/"), boost::token_compress_on);
-        for (const auto &n: out)
+        if (out[3] == "set")
         {
-            std::cout << "x: " << n << std::endl;
-
-        }
-
-        if ((out.size() > 2) && (out.back() == "set"))
-        {
-            std::string ct(contents.begin(), contents.end());
-            _setm(out[out.size() - 2], ct);
+            _setm(out[2], out[4], std::string(contents));
         }
     }
 

@@ -43,7 +43,7 @@ class mqtt_client
     using packet_id_t = client_type_t::packet_id_t;
 public:
 
-    using set_method = std::function<void (std::string_view room, std::string_view data)>;
+    using set_method = std::function<void (std::string_view room, std::string_view target, std::string_view data)>;
 
     mqtt_client(const std::string &host, const std::string &port);
     void expose_cube(device_sp dsp);
