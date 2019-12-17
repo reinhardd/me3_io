@@ -121,6 +121,23 @@ std::string mode_as_string(opmode m)
     return xs.str();
 }
 
+std::string flags_as_string(uint16_t flags)
+{
+    std::ostringstream xs;
+    xs << std::hex << flags << std::dec
+       << " mode:" << (flags & 3) << ':' << mode_as_string(static_cast<opmode>(flags & 3))
+       << " dst:" << ((flags & 8) == 8)
+       << " gw:" << ((flags & 0x10) == 0x10)
+       << " panel:" << ((flags & 0x20) == 0x20)
+       << " link:" << ((flags & 0x40) == 0x40)
+       << " bat:" << ((flags & 0x80) == 0x80)
+       << " init:" << ((flags & 0x200) == 0x200)
+       << " answer:" << ((flags & 0x400) == 0x400)
+       << " error:" << ((flags & 0x800) == 0x800)
+       << " valid:" << ((flags & 0x1000) == 0x1000);
+    return xs.str();
+}
+
 }
 
 bool parse_room(std::string &input, std::string &roomname)

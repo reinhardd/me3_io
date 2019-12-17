@@ -14,6 +14,8 @@ namespace max_eq3 {
 
     std::string mode_as_string(opmode m);
 
+    std::string flags_as_string(uint16_t f);
+
 }
 
 template <typename RT>
