@@ -55,6 +55,7 @@ const max_eq3::room_conf * get_room_config(const std::string &room, const max_eq
 
 namespace max_eq3 {
 
+#if 0
 struct l_submsg_data
 {
     max_eq3::devicetype
@@ -67,7 +68,10 @@ struct l_submsg_data
     double      act_temp {0.0};
     uint16_t    dateuntil;
     uint16_t    minutes_since_midnight;                      // since midnight
+    opmode      get_opmode() const
+        { return static_cast<opmode>(flags &3 ); }
 };
+#endif
 
 cube_event_target::~cube_event_target()
 {}
@@ -87,6 +91,9 @@ cube_io::cube_io(cube_event_target *iet, const std::string &serialno)
 
 cube_io::~cube_io()
 {
+    _p->io.post([this](){
+        ba::async_write(_p->cube->sock, ba::buffer("q:\r\n"), [](const boost::system::error_code &e, std::size_t bytes_transferred){});
+    });
     _p->io.stop();
     _p->io_thread.join();
 }
@@ -245,7 +252,28 @@ void cube_io::update_config(cube_sp csp)
         );
 
     }
+}
 
+void cube_io::process_connect(cube_sp cube, const bs::error_code &ec)
+{
+    if (ec)
+    {
+        LogE("connect failed " << ec)
+        std::cout << "cube connect failed: " << ec << std::endl;
+        std::unique_ptr<ba::steady_timer> timer = std::make_unique<ba::steady_timer>(_p->io,
+                                                          std::chrono::steady_clock::now() + std::chrono::seconds(10));
+        timer->async_wait([&timer, this](boost::system::error_code ec){
+            std::cout << "reconnect timeout\n";
+            this->process_io();
+            timer.reset();
+        });
+    }
+    else
+    {
+        LogV("connected")
+        _p->cube = cube;
+        start_rx_from_cube(_p->cube);
+    }
 }
 
 void cube_io::handle_mcast_response(const bs::error_code &error, size_t bytes_recvd)
@@ -271,11 +299,18 @@ void cube_io::handle_mcast_response(const bs::error_code &error, size_t bytes_re
                 {
                     ba::ip::tcp::endpoint ep(cube->addr, 62910);
                     boost::system::error_code ec;
+                    LogV("connect to " << ep)
+
+                    cube->sock.async_connect(ep, boost::bind(&cube_io::process_connect, this, cube, ba::placeholders::error));
+                    /*
                     cube->sock.connect(ep, ec);
                     if (!ec)
                         _p->cube = cube;
+                    else
+                        LogV("connecting failed to " << ep)
+                    */
                 }
-                start_rx_from_cube(cube);
+                // start_rx_from_cube(cube);
             }
         }
         else if (bytes_recvd == 19)
@@ -298,7 +333,7 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
         {
         case 'S':
             {
-               LogV("S-msg: " << data)
+               LogV("S-msg: " << dump(data))
                std::vector<std::string> inp;
                data.erase(0,2);
                boost::split(inp, data, boost::is_any_of(","), boost::token_compress_on);
@@ -355,7 +390,7 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
                 for (const m_room &r: rooms)
                 {
                     LogV("room id: " << uint16_t(r.id)
-                         << " rfaddr: " << std::hex << r.group_rfaddr << std::dec
+                         << " grp_rfaddr: " << std::hex << r.group_rfaddr << std::dec
                          << " n:" << r.name)
 
                     room_conf &rc = _p->devconfigs.roomconf[r.id];
@@ -398,6 +433,7 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
                 LogI("process L-Msg");
                 std::string decoded = decode64(data.substr(2, data.size() - 3));
 
+                std::map<std::string, std::string> info;
                 while (decoded.size())
                 {
                     unsigned submsglen = decoded[0];
@@ -405,13 +441,20 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
                     l_submsg_data adata;
                     if (l_response(decoded.substr(0, submsglen + 1), adata))
                     {
+                        _p->device_data[adata.rfaddr] = adata;
+                        info[_p->devconfigs.room_from_rfaddr(adata.rfaddr)] += std::string('\n' + l_submsg_as_string(adata));
+                        // LogI(_p->devconfigs.room_from_rfaddr(adata.rfaddr) << ' ' << l_submsg_as_string(adata) << " room:");
                         deploydata(adata);
                     }
                     else
-                        LogE("l_resp failed");
+                        LogE("l_resp failed")
 
                     decoded.erase(0, submsglen + 1);
                 }
+                LogI("ldevs size " << info.size())
+                for (const auto &n: info)
+                    LogI("devices: " << n.first << n.second)
+
                 emit_changed_data();
             }
             break;
@@ -583,7 +626,7 @@ void cube_io::deploydata(const l_submsg_data &smd)
                 if (smd.act_temp != 0.0)
                     rd.change(rd.act, smd.act_temp, rcfs, changeflags::act_temp);
                 rd.change(rd.set, smd.set_temp, rcfs, changeflags::set_temp);
-                LogI("mode " << std::hex << int(rd.mode) << " -- " << (smd.flags & 0x3) << " rfaddr " << smd.rfaddr << std::dec);
+                // LogI("mode " << std::hex << int(rd.mode) << " -- " << (smd.flags & 0x3) << " rfaddr " << smd.rfaddr << std::dec);
                 rd.change(rd.mode, static_cast<opmode>(smd.flags & 0x3), rcfs, changeflags::mode);
                 rd.change(rd.flags[smd.rfaddr], smd.flags, rcfs, changeflags::contained_devs);
                 rd.change(smd.rfaddr, smd.valve_pos, rcfs);
@@ -592,7 +635,7 @@ void cube_io::deploydata(const l_submsg_data &smd)
         case devicetype::WallThermostat:
             rd.change(rd.act, smd.act_temp, rcfs, changeflags::act_temp);
             rd.change(rd.set, smd.set_temp, rcfs, changeflags::set_temp);
-            LogI("mode wt " << std::hex << int(rd.mode) << " -- " << (smd.flags & 0x3) << " rfaddr " << smd.rfaddr <<  std::dec);
+            // LogI("mode wt " << std::hex << int(rd.mode) << " -- " << (smd.flags & 0x3) << " rfaddr " << smd.rfaddr <<  std::dec);
             rd.change(rd.mode, static_cast<opmode>(smd.flags & 0x3), rcfs, changeflags::mode);
             rd.change(rd.flags[smd.rfaddr], smd.flags, rcfs, changeflags::contained_devs);
             break;
@@ -636,6 +679,7 @@ void cube_io::emit_changed_data()
 
             device_data_store::roomdatamap::const_iterator
                     rdmcit = _p->devconfigs.rooms.find(roomid);
+
             device_data_store::roomconfmap::const_iterator
                     rcfcit = _p->devconfigs.roomconf.find(roomid);
 
@@ -802,9 +846,9 @@ void cube_io::emit_S_temp_mode(rfaddr_t sendto, uint8_t roomid, uint8_t tmp_mode
 
     std::string encoded = encode64(xs.str());
 
-    LogV("unencoded" << dump(xs.str()) << std::endl)
-    LogV("encoded" << encoded << std::endl)
-    LogV("redecoded" << dump(decode64(encoded)) << std::endl)
+    LogV("unencoded " << dump(xs.str()) << std::endl)
+    LogV("encoded " << encoded << std::endl)
+    LogV("redecoded " << dump(decode64(encoded)) << std::endl)
     std::string cmd2send = "s:" + encoded + "\r\n";
     LogV("should send " << dump(cmd2send) << std::endl)
 
@@ -818,13 +862,7 @@ void cube_io::emit_S_temp_mode(rfaddr_t sendto, uint8_t roomid, uint8_t tmp_mode
 
     ba::async_write(csp->sock,
                     ba::buffer(cmd2send),
-                    [&](const boost::system::error_code &e, std::size_t bytes_transferred)
-                    {
-                        if (e)
-                            LogE("set temp failed " << e << std::endl)
-                        else
-                            LogV("set temp done " << bytes_transferred << std::endl)
-                    }
+                    boost::bind(&cube_io::do_send_l_msg, this, _1, _2)
     );
 }
 
@@ -882,11 +920,20 @@ void cube_io::do_send_schedule(std::string room, days day, const day_schedule ds
 
 }
 
+void cube_io::do_send_l_msg(const boost::system::error_code &e, std::size_t bytes_transferred)
+{
+    if (e)
+        LogE("set temp failed " << e << std::endl)
+    else
+        LogV("set temp done " << bytes_transferred << std::endl)
+
+    // force a reread
+    LogV("send l")
+    ba::async_write(_p->cube->sock, ba::buffer("l:\r\n"), [](const boost::system::error_code &e, std::size_t bytes_transferred){});
+}
 
 void cube_io::do_send_temp(std::string room, double temp)
 {
-    LogV(__FUNCTION__ << " for room " << room << " to " << temp << std::endl)
-
     const room_conf * roomconfig = nullptr;
 
     for (const auto &v: _p->devconfigs.roomconf)
@@ -907,6 +954,7 @@ void cube_io::do_send_temp(std::string room, double temp)
     }
     room_data &roomdata = _p->devconfigs.rooms[roomconfig->id];
 
+    LogV(__FUNCTION__ << " for room " << room << ':' << roomconfig->id << " to " << temp)
 
     uint8_t tmp = uint8_t(temp * 2);
 
@@ -973,15 +1021,7 @@ void cube_io::do_send_temp(std::string room, double temp)
     auto csp = _p->cube; // _p->cubes[roomconfig->cube_rfaddr];
     ba::async_write(csp->sock,
                     ba::buffer(cmd2send),
-                    [&](const boost::system::error_code &e, std::size_t bytes_transferred)
-                    {
-                        if (e)
-                            LogE("set temp failed " << e << std::endl)
-                        else
-                            LogV("set temp done " << bytes_transferred << std::endl)
-
-
-                    }
+                    boost::bind(&cube_io::do_send_l_msg, this, _1, _2)     // force a reload
     );
 }
 
@@ -1002,18 +1042,8 @@ bool l_response(std::string &&decoded, max_eq3::l_submsg_data &adata)
     adata.rfaddr = fromPtr<uint32_t>(&decoded[1], 3);
     uint8_t unknown = fromPtr<uint8_t>(&decoded[4]);
     adata.flags = fromPtr<uint16_t>(&decoded[5]);
-    LogI("flags:" << std::hex << adata.flags << std::dec
-                  << " mode:" << (adata.flags & 3)
-                  << " dst:" << ((adata.flags & 8) == 8)
-                  << " gw:" << ((adata.flags & 0x10) == 0x10)
-                  << " panel:" << ((adata.flags & 0x20) == 0x20)
-                  << " link:" << ((adata.flags & 0x40) == 0x40)
-                  << " bat:" << ((adata.flags & 0x80) == 0x80)
-                  << " init:" << ((adata.flags & 0x200) == 0x200)
-                  << " answer:" << ((adata.flags & 0x400) == 0x400)
-                  << " error:" << ((adata.flags & 0x800) == 0x800)
-                  << " valid:" << isvalid(adata.flags)
-                   )
+    // LogI("flags:" << flags_as_string(adata.flags));
+
     if (len > 6)
     {
         if (isvalid(adata.flags))

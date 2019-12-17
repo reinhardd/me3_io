@@ -65,6 +65,23 @@ typedef struct wall_thermostat_config
     double comfort, eco, min, max, tofs;
 } wall_thermostat_config;
 
+struct l_submsg_data
+{
+    max_eq3::devicetype
+        submsg_src{max_eq3::devicetype::Undefined};
+
+    uint32_t    rfaddr {0};
+    uint16_t    flags {0};
+    uint16_t    valve_pos {0};
+    double      set_temp {0.0};
+    double      act_temp {0.0};
+    uint16_t    dateuntil;
+    uint16_t    minutes_since_midnight;                      // since midnight
+    opmode      get_opmode() const
+        { return static_cast<opmode>(flags &3 ); }
+};
+
+
 using device_v = std::variant<wall_thermostat, radiator_thermostat>;
 
 struct room_details
@@ -102,12 +119,10 @@ public:
 
 private:
 
-    // const room_conf * get_room_config(const std::string &room);
-
     // asio in process cmd handler
     void do_send_temp(std::string room, double temp);
     void do_send_mode(std::string room, opmode mode);
-    void send_temp_done(const boost::system::error_code &e, std::size_t bytes_transferred);
+    void do_send_l_msg(const boost::system::error_code &e, std::size_t bytes_transferred);
     void do_send_schedule(std::string room, days day, const day_schedule ds);
     void process_connect(cube_sp, const boost::system::error_code &err);
 
