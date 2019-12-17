@@ -109,7 +109,7 @@ public:
     ~cube_io();
 
     // room api
-    void change_set_temp(const std::string &room, double temp);
+    void change_temp(const std::string &room, double temp);
     void change_mode(const std::string &room, opmode mode);
     void change_schedule(std::string room, const day_schedule &ds);
     void get_details(const std::string &room, room_details &rd);

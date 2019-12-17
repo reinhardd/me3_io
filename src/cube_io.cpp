@@ -98,15 +98,15 @@ cube_io::~cube_io()
     _p->io_thread.join();
 }
 
-void cube_io::change_set_temp(const std::string &room, double temp)
+void cube_io::change_temp(const std::string &room, double temp)
 {
-    LogV(__PRETTY_FUNCTION__ << std::endl);
+    LogI(__FUNCTION__ << " for " << room << " to " << temp);
     _p->io.post(boost::bind(&cube_io::do_send_temp, this, room, temp));
 }
 
 void cube_io::change_mode(const std::string &room, opmode mode)
 {
-    LogV(__PRETTY_FUNCTION__ << std::endl);
+    LogI(__FUNCTION__ << " for " << room << " to " << mode_as_string(mode));
     _p->io.post(boost::bind(&cube_io::do_send_mode, this, room, mode));
 }
 
@@ -846,9 +846,11 @@ void cube_io::emit_S_temp_mode(rfaddr_t sendto, uint8_t roomid, uint8_t tmp_mode
 
     std::string encoded = encode64(xs.str());
 
+#if 0
     LogV("unencoded " << dump(xs.str()) << std::endl)
     LogV("encoded " << encoded << std::endl)
     LogV("redecoded " << dump(decode64(encoded)) << std::endl)
+#endif
     std::string cmd2send = "s:" + encoded + "\r\n";
     LogV("should send " << dump(cmd2send) << std::endl)
 
@@ -1006,9 +1008,11 @@ void cube_io::do_send_temp(std::string room, double temp)
 
     std::string encoded = encode64(xs.str());
 
+#if 0
     LogV("unencoded" << dump(xs.str()) << std::endl)
     LogV("encoded" << encoded << std::endl)
     LogV("redecoded" << dump(decode64(encoded)) << std::endl)
+#endif
     std::string cmd2send = "s:" + encoded + "\r\n";
     LogV("should send " << dump(cmd2send) << std::endl)
 

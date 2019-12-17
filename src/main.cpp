@@ -256,7 +256,7 @@ int main(int argc, char *argv[])
             double temp;
             is >> temp;
             std::cout << "set temp for " << room << " to " << temp << std::endl;
-            cub.change_set_temp(std::string(room.begin(), room.end()), temp);
+            cub.change_temp(std::string(room.begin(), room.end()), temp);
         }
         else if (target == "mode")
         {            
@@ -311,7 +311,7 @@ int main(int argc, char *argv[])
 
                 try {
                     double temp = boost::lexical_cast<double>(cmdstring);
-                    cub.change_set_temp(roomname, temp);
+                    cub.change_temp(roomname, temp);
                 } catch(boost::bad_lexical_cast &e) {
                     std::cerr << "error reading temperature: " << e.what() << std::endl;
                 }
