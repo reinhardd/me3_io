@@ -60,14 +60,16 @@ struct cube_io::Private
     uint8_t                         recvline[32];   // initial udp acceptance buffer for broadcast response
     boost::asio::ip::udp::endpoint  mcast_endpoint;
 
-    bool                            mcast_repeat = { false };
+    bool                            mcast_repeat{false};
     boost::asio::steady_timer       mcast_timeout;
 
     std::thread                     io_thread;
 
     cube_event_target              *iet{nullptr};
 
-    std::map<rfaddr_t, m_device>    device_defs;
+    std::map<rfaddr_t, m_device>    device_defs;    // filled by M-Msg
+    std::map<rfaddr_t, l_submsg_data>
+                                    device_data;    // filled by L-Msg
 
     device_data_store               devconfigs;
 
