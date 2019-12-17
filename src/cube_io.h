@@ -107,7 +107,9 @@ private:
     // asio in process cmd handler
     void do_send_temp(std::string room, double temp);
     void do_send_mode(std::string room, opmode mode);
+    void send_temp_done(const boost::system::error_code &e, std::size_t bytes_transferred);
     void do_send_schedule(std::string room, days day, const day_schedule ds);
+    void process_connect(cube_sp, const boost::system::error_code &err);
 
     void emit_S_temp_mode(rfaddr_t sendto, uint8_t roomid, uint8_t tmp_mode);
 
