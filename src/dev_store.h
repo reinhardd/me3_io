@@ -125,6 +125,19 @@ typedef struct device_data_store
 
     roomdatamap rooms;
 
+    std::string room_from_rfaddr(rfaddr_t addr)
+    {
+        auto devitr = devconf.find(addr);
+        if (devitr != devconf.end())
+        {
+            auto rconfitr = roomconf.find(devitr->second.room_id);
+            if (rconfitr != roomconf.end())
+                return rconfitr->second.name;
+        }
+        return std::string();
+    }
+
+
 }   device_data_store;
 
 }
