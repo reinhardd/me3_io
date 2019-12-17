@@ -143,11 +143,11 @@ std::string l_submsg_as_string(const l_submsg_data &smgs)
     std::ostringstream xs;
     opmode m = smgs.get_opmode();
     xs << std::setfill('0') << std::hex << std::setw(6) << smgs.rfaddr
-       << std::dec << std::setfill(' ')
+       << std::dec // << std::setfill(' ')
        << ':' << devicetype_as_string(smgs.submsg_src)
-       << std::setprecision(6)
-       << " s:" << smgs.set_temp
-       << " a:" << smgs.act_temp
+       << std::fixed << std::setprecision(1)
+       << " s:" << std::setw(4) << smgs.set_temp
+       << " a:" << std::setw(4) << smgs.act_temp
        << " v:" << smgs.valve_pos
        << " mode:" << mode_as_string(smgs.get_opmode())
        << " flags:" << flags_as_string(smgs.flags);
