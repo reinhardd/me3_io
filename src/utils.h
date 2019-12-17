@@ -16,6 +16,8 @@ namespace max_eq3 {
 
     std::string flags_as_string(uint16_t f);
 
+    std::string l_submsg_as_string(const l_submsg_data &smgs);
+    std::string devicetype_as_string(devicetype dt);
 }
 
 template <typename RT>

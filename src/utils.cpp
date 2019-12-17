@@ -138,6 +138,37 @@ std::string flags_as_string(uint16_t flags)
     return xs.str();
 }
 
+std::string l_submsg_as_string(const l_submsg_data &smgs)
+{
+    std::ostringstream xs;
+    opmode m = smgs.get_opmode();
+    xs << std::setfill('0') << std::hex << std::setw(6) << smgs.rfaddr
+       << std::dec << std::setfill(' ')
+       << ':' << devicetype_as_string(smgs.submsg_src)
+       << std::setprecision(6)
+       << " s:" << smgs.set_temp
+       << " a:" << smgs.act_temp
+       << " v:" << smgs.valve_pos
+       << " mode:" << mode_as_string(smgs.get_opmode())
+       << " flags:" << flags_as_string(smgs.flags);
+    return xs.str();
+}
+std::string devicetype_as_string(devicetype dt)
+{
+    switch (dt)
+    {
+        case devicetype::Cube: return "cube";
+        case devicetype::WallThermostat: return "wt";
+        case devicetype::RadiatorThermostat: return "rt";
+        case devicetype::RadiatorThermostatPlus: return "rtp";
+        case devicetype::ShutterContact: return "sc";
+        case devicetype::EcoButton: return "ebtn";
+    }
+    std::ostringstream xs;
+    xs << "dev " << static_cast<unsigned>(dt);
+    return xs.str();
+}
+
 }
 
 bool parse_room(std::string &input, std::string &roomname)
