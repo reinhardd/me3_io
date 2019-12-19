@@ -84,13 +84,6 @@ struct l_submsg_data
 
 using device_v = std::variant<wall_thermostat, radiator_thermostat>;
 
-struct room_details
-{
-    rfaddr_t addr;
-
-
-};
-
 class cube_event_target
 {
 public:
@@ -100,7 +93,6 @@ public:
     virtual void connected()  = 0;
     virtual void disconnected() = 0;
 };
-
 
 class cube_io
 {
@@ -112,8 +104,6 @@ public:
     void change_temp(const std::string &room, double temp);
     void change_mode(const std::string &room, opmode mode);
     void change_schedule(std::string room, const day_schedule &ds);
-    void get_details(const std::string &room, room_details &rd);
-
 
     static void set_logger(logging_target *target);
 
