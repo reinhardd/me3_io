@@ -33,6 +33,7 @@ using dev_config_v = std::variant<cube_config, radiatorThermostat_config, wallTh
 typedef struct dev_config
 {
     rfaddr_t        rfaddr;
+    std::string     name;
     devicetype      devtype;
     std::string     serial;
     uint16_t        room_id;
@@ -59,10 +60,12 @@ typedef struct room_data
     timestamped_temp act;
     timestamped_temp set;
     opmode mode;
-    // std::chrono::system_clock::time_point acttime;
     std::map<rfaddr_t, uint16_t> flags;
+
     using timestamped_valve_pos_by_rfaddr = std::map<rfaddr_t, timestamped_valve_pos>;
+
     timestamped_valve_pos_by_rfaddr valve_pos;
+
     bool operator!=(const room_data &rhs) const
     {
         return ((act != rhs.act)
@@ -137,7 +140,15 @@ typedef struct device_data_store
         return std::string();
     }
 
-
+    std::string dev_name_from_rfaddr(rfaddr_t rfaddr)
+    {
+        devicemap::const_iterator cit = devconf.find(rfaddr);
+        if (cit != devconf.end())
+        {
+            return cit->second.name;
+        }
+        return std::string();
+    }
 }   device_data_store;
 
 }
