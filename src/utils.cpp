@@ -121,11 +121,16 @@ std::string mode_as_string(opmode m)
     return xs.str();
 }
 
+opmode mode_from_flags(uint16_t flags)
+{
+    return static_cast<opmode>(flags & 3);
+}
+
 std::string flags_as_string(uint16_t flags)
 {
     std::ostringstream xs;
     xs << std::hex << flags << std::dec
-       << " mode:" << (flags & 3) << ':' << mode_as_string(static_cast<opmode>(flags & 3))
+       << " mode:" << (flags & 3) << ':' << mode_as_string(mode_from_flags(flags))
        << " dst:" << ((flags & 8) == 8)
        << " gw:" << ((flags & 0x10) == 0x10)
        << " panel:" << ((flags & 0x20) == 0x20)
