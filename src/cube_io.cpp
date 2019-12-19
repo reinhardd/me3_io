@@ -425,6 +425,8 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
                     dc.serial = d.serial;
                     dc.devtype = d.type;
                     dc.room_id = d.room_id;
+                    dc.name = d.name;
+                    std::cout << "dev name " << dc.name << std::endl;
                 }
             }
             break;
@@ -442,8 +444,10 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
                     if (l_response(decoded.substr(0, submsglen + 1), adata))
                     {
                         _p->device_data[adata.rfaddr] = adata;
-                        info[_p->devconfigs.room_from_rfaddr(adata.rfaddr)] += std::string('\n' + l_submsg_as_string(adata));
-                        // LogI(_p->devconfigs.room_from_rfaddr(adata.rfaddr) << ' ' << l_submsg_as_string(adata) << " room:");
+                        std::ostringstream devinfo;
+                        devinfo << std::setw(25) << _p->devconfigs.dev_name_from_rfaddr(adata.rfaddr)
+                                << ":  " << l_submsg_as_string(adata);
+                        info[_p->devconfigs.room_from_rfaddr(adata.rfaddr)] += std::string('\n' + devinfo.str()); // l_submsg_as_string(adata));
                         deploydata(adata);
                     }
                     else
@@ -479,6 +483,12 @@ void cube_io::evaluate_data(cube_sp csp, std::string &&data)
 
                     uint8_t len = fromPtr<uint8_t>(pData++);   // len
                     devconf.rfaddr = fromPtr<rfaddr_t>(pData, 3);
+
+                    if (_p->devconfigs.devconf.find(devconf.rfaddr) != _p->devconfigs.devconf.end())
+                    {
+                        devconf = _p->devconfigs.devconf[devconf.rfaddr];
+                    }
+
                     pData += 3;
                     devconf.devtype = devicetype(fromPtr<uint8_t>(pData++));
                     devconf.room_id = fromPtr<uint8_t>(pData++);
@@ -660,17 +670,12 @@ void cube_io::emit_changed_data()
             if (_p->cube)
             {
                 device_sp newdev = std::make_shared<device>();
-                // cube_map_t::const_iterator ccit = _p->cubes.begin();
-                // if (ccit != _p->cubes.end())
-                //{
 
-                    newdev->name = _p->cube->serial; // ccit->second->serial;
-                    newdev->addr = _p->cube->addr.to_string(); // ccit->second->addr.to_string();
-                    LogI("newdev " << newdev->name << " a: " << newdev->addr)
-                    _p->deviceinfo = newdev;
-                    _p->iet->device_info(newdev);
-                    std::this_thread::sleep_for(std::chrono::seconds(1));
-                // }
+                newdev->name = _p->cube->serial;
+                newdev->addr = _p->cube->addr.to_string();
+                LogI("newdev " << newdev->name << " a: " << newdev->addr)
+                _p->deviceinfo = newdev;
+                _p->iet->device_info(newdev);
             }
         }
         for (const auto val: _p->changeset)
@@ -1058,12 +1063,12 @@ bool l_response(std::string &&decoded, max_eq3::l_submsg_data &adata)
                 adata.set_temp = (fromPtr<uint8_t>(&decoded[7+1]) & 0x7f) / 2.0;
                 adata.minutes_since_midnight = fromPtr<uint8_t>(&decoded[7+4])*30;
                 uint16_t act_temp = 0;
-                if (len == 11) // thermostat of wallthermostat
+                if (len == 11) // thermostat or thermostat+
                 {
                     adata.submsg_src = devicetype::RadiatorThermostat;
                     act_temp = (fromPtr<uint16_t>(&decoded[7+2]) & 0x1ff);
                 }
-                else if (len == 12)
+                else if (len == 12) // wallthermostat
                 {
                     adata.submsg_src = devicetype::WallThermostat;
                     act_temp = (uint16_t(decoded[7+1] & 0x80) << 1) + fromPtr<uint8_t>(&decoded[7+5]);
