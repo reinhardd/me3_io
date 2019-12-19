@@ -180,24 +180,14 @@ public:
         return rooms.find(room) != rooms.end();
     }
 
-    /*
-    std::string timeinfo(std::chrono::system_clock::time_point tp)
-    {
-        std::time_t set_time = std::chrono::system_clock::to_time_t(tp);
-        std::ostringstream tmp;
-        std::tm tm = *std::localtime(&set_time);
-        tmp << std::put_time(&tm, "%R_%d.%m");
-        return tmp.str();
-    }*/
-
     void loginfo(std::ostream &os)
     {
         roommap tmp = getroominfo();
         os << "rooms:\n";
         for (const auto &v: tmp)
         {
-            os << "\t" << v.first
-               << " m: " << max_eq3::mode_as_string(v.second->mode); // << int(v.second->mode)
+            os << "  " << std::setw(25) << v.first
+               << " m: " << std::setw(8) << max_eq3::mode_as_string(v.second->mode); // << int(v.second->mode)
             os << " set(" << v.second->set_temp
                << ") act(" << v.second->actual_temp;
             os << ") valve(" << v.second->valve_pos << ")"; // .first << "%: " << timeinfo(v.second->valve_pos.second);
