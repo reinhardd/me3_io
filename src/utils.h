@@ -13,6 +13,7 @@ namespace max_eq3 {
     std::string encode64(const std::string& s);
 
     std::string mode_as_string(opmode m);
+    opmode mode_from_flags(uint16_t flags);
 
     std::string flags_as_string(uint16_t f);
 
